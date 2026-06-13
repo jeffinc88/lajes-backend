@@ -4,6 +4,8 @@ require('dotenv').config();
 
 const authRoutes = require('./routes/auth');
 const usersRoutes = require('./routes/users');
+const itemsRoutes = require('./routes/items');
+const orcamentosRoutes = require('./routes/orcamentos');
 
 const app = express();
 
@@ -12,6 +14,8 @@ app.use(express.json());
 
 app.use('/auth', authRoutes);
 app.use('/users', usersRoutes);
+app.use('/items', itemsRoutes);
+app.use('/orcamentos', orcamentosRoutes);
 
 app.get('/', (req, res) => res.json({ status: 'ok' }));
 
