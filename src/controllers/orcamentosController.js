@@ -47,7 +47,7 @@ const updateOrcamento = async (req, res) => {
 
     const updated = { ...current.rows[0], ...fields };
     await pool.query(
-      'UPDATE orcamentos SET cliente=$1, itens=$2, total=$3, detalhamentos=$4, status=$5, vendedor=$6 WHERE id=$7',
+      'UPDATE orcamentos SET cliente=$1, itens=$2, total=$3, detalhamentos=$4, status=$5, vendedor=$6, frete=$7, nota=$8, validade=$9 WHERE id=$10',
       [
         JSON.stringify(updated.cliente),
         JSON.stringify(updated.itens),
@@ -55,6 +55,9 @@ const updateOrcamento = async (req, res) => {
         JSON.stringify(updated.detalhamentos),
         updated.status,
         JSON.stringify(updated.vendedor),
+        updated.frete || 0,
+        JSON.stringify(updated.nota || null),
+        updated.validade || 30,
         id,
       ]
     );
