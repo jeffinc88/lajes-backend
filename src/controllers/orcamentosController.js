@@ -23,12 +23,12 @@ const getOrcamentos = async (req, res) => {
 };
 
 const createOrcamento = async (req, res) => {
-  const { cliente, itens, total, detalhamentos, vendedor } = req.body;
+  const { cliente, itens, total, detalhamentos, vendedor, frete, nota } = req.body;
 
   try {
     const result = await pool.query(
-      'INSERT INTO orcamentos (cliente, itens, total, detalhamentos, vendedor) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [JSON.stringify(cliente), JSON.stringify(itens), total, JSON.stringify(detalhamentos), JSON.stringify(vendedor)]
+      'INSERT INTO orcamentos (cliente, itens, total, detalhamentos, vendedor, frete, nota) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [JSON.stringify(cliente), JSON.stringify(itens), total, JSON.stringify(detalhamentos), JSON.stringify(vendedor), frete || 0, JSON.stringify(nota || null)]
     );
     res.status(201).json(result.rows[0]);
   } catch (e) {
