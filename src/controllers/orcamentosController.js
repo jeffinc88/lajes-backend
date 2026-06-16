@@ -23,12 +23,29 @@ const getOrcamentos = async (req, res) => {
 };
 
 const createOrcamento = async (req, res) => {
-  const { cliente, itens, total, detalhamentos, vendedor, frete, nota, validade } = req.body;
+  const { cliente, itens, total, detalhamentos, vendedor, frete, nota, validade, art, acrescimo, outrasDespesas, desconto, observacao } = req.body;
 
   try {
     const result = await pool.query(
-      'INSERT INTO orcamentos (cliente, itens, total, detalhamentos, vendedor, frete, nota, validade) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
-      [JSON.stringify(cliente), JSON.stringify(itens), total, JSON.stringify(detalhamentos), JSON.stringify(vendedor), frete || 0, JSON.stringify(nota || null), validade || 30]
+      `INSERT INTO orcamentos 
+        (cliente, itens, total, detalhamentos, vendedor, frete, nota, validade, art, acrescimo, outras_despesas, desconto, observacao) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
+       RETURNING *`,
+      [
+        JSON.stringify(cliente),
+        JSON.stringify(itens),
+        total,
+        JSON.stringify(detalhamentos),
+        JSON.stringify(vendedor),
+        frete || 0,
+        JSON.stringify(nota || null),
+        validade || 30,
+        art || 0,
+        acrescimo || 0,
+        outrasDespesas || 0,
+        desconto || 0,
+        observacao || '',
+      ]
     );
     res.status(201).json(result.rows[0]);
   } catch (e) {
@@ -47,7 +64,11 @@ const updateOrcamento = async (req, res) => {
 
     const updated = { ...current.rows[0], ...fields };
     await pool.query(
-      'UPDATE orcamentos SET cliente=$1, itens=$2, total=$3, detalhamentos=$4, status=$5, vendedor=$6, frete=$7, nota=$8, validade=$9 WHERE id=$10',
+      `UPDATE orcamentos SET 
+        cliente=$1, itens=$2, total=$3, detalhamentos=$4, status=$5, vendedor=$6, 
+        frete=$7, nota=$8, validade=$9, art=$10, acrescimo=$11, outras_despesas=$12, 
+        desconto=$13, observacao=$14 
+       WHERE id=$15`,
       [
         JSON.stringify(updated.cliente),
         JSON.stringify(updated.itens),
@@ -58,6 +79,11 @@ const updateOrcamento = async (req, res) => {
         updated.frete || 0,
         JSON.stringify(updated.nota || null),
         updated.validade || 30,
+        updated.art || 0,
+        updated.acrescimo || 0,
+        updated.outras_despesas || 0,
+        updated.desconto || 0,
+        updated.observacao || '',
         id,
       ]
     );
