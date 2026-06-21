@@ -63,12 +63,18 @@ const updateOrcamento = async (req, res) => {
     if (current.rows.length === 0) return res.status(404).json({ error: 'Orçamento não encontrado.' });
 
     const updated = { ...current.rows[0], ...fields };
+
+    // Normalizar camelCase para snake_case
+    const outrasDespesas = fields.outrasDespesas !== undefined ? fields.outrasDespesas : (fields.outras_despesas !== undefined ? fields.outras_despesas : updated.outras_despesas || 0);
+    const motivoPerda = fields.motivo_perda !== undefined ? fields.motivo_perda : updated.motivo_perda || null;
+    const margem = fields.margem !== undefined ? fields.margem : updated.margem || 1.3;
+
     await pool.query(
       `UPDATE orcamentos SET 
         cliente=$1, itens=$2, total=$3, detalhamentos=$4, status=$5, vendedor=$6, 
         frete=$7, nota=$8, validade=$9, art=$10, acrescimo=$11, outras_despesas=$12, 
-        desconto=$13, observacao=$14 
-       WHERE id=$15`,
+        desconto=$13, observacao=$14, motivo_perda=$15, margem=$16
+       WHERE id=$17`,
       [
         JSON.stringify(updated.cliente),
         JSON.stringify(updated.itens),
@@ -81,9 +87,11 @@ const updateOrcamento = async (req, res) => {
         updated.validade || 30,
         updated.art || 0,
         updated.acrescimo || 0,
-        updated.outras_despesas || 0,
+        outrasDespesas,
         updated.desconto || 0,
         updated.observacao || '',
+        motivoPerda,
+        margem,
         id,
       ]
     );
