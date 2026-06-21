@@ -64,10 +64,13 @@ const updateOrcamento = async (req, res) => {
 
     const updated = { ...current.rows[0], ...fields };
 
-    // Normalizar camelCase para snake_case
-    const outrasDespesas = fields.outrasDespesas !== undefined ? fields.outrasDespesas : (fields.outras_despesas !== undefined ? fields.outras_despesas : updated.outras_despesas || 0);
+    const outrasDespesas = parseFloat(fields.outrasDespesas ?? fields.outras_despesas ?? updated.outras_despesas ?? 0);
     const motivoPerda = fields.motivo_perda !== undefined ? fields.motivo_perda : updated.motivo_perda || null;
-    const margem = fields.margem !== undefined ? fields.margem : updated.margem || 1.3;
+    const margem = parseFloat(fields.margem ?? updated.margem ?? 1.3);
+    const desconto = parseFloat(fields.desconto ?? updated.desconto ?? 0);
+    const frete = parseFloat(fields.frete ?? updated.frete ?? 0);
+    const art = parseFloat(fields.art ?? updated.art ?? 0);
+    const total = parseFloat(fields.total ?? updated.total ?? 0);
 
     await pool.query(
       `UPDATE orcamentos SET 
@@ -78,17 +81,17 @@ const updateOrcamento = async (req, res) => {
       [
         JSON.stringify(updated.cliente),
         JSON.stringify(updated.itens),
-        updated.total,
+        total,
         JSON.stringify(updated.detalhamentos),
         updated.status,
         JSON.stringify(updated.vendedor),
-        updated.frete || 0,
+        frete,
         JSON.stringify(updated.nota || null),
         updated.validade || 30,
-        updated.art || 0,
+        art,
         updated.acrescimo || 0,
         outrasDespesas,
-        updated.desconto || 0,
+        desconto,
         updated.observacao || '',
         motivoPerda,
         margem,
