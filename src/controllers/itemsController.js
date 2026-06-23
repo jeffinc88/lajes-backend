@@ -13,7 +13,7 @@ const getItems = async (req, res) => {
 
 const createItem = async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acesso negado.' });
-  const { nome, unidade, preco, categoria } = req.body;
+  const { nome, unidade, preco, preco_custo, categoria } = req.body;
 
   if (!nome || !unidade || !preco || !categoria) {
     return res.status(400).json({ error: 'Preencha todos os campos.' });
@@ -21,8 +21,8 @@ const createItem = async (req, res) => {
 
   try {
     const result = await pool.query(
-      'INSERT INTO items (nome, unidade, preco, categoria) VALUES ($1, $2, $3, $4) RETURNING *',
-      [nome, unidade, preco, categoria]
+      'INSERT INTO items (nome, unidade, preco, preco_custo, categoria) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [nome, unidade, preco, preco_custo || preco, categoria]
     );
     res.status(201).json(result.rows[0]);
   } catch (e) {
@@ -34,12 +34,12 @@ const createItem = async (req, res) => {
 const updateItem = async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acesso negado.' });
   const { id } = req.params;
-  const { nome, unidade, preco, categoria } = req.body;
+  const { nome, unidade, preco, preco_custo, categoria } = req.body;
 
   try {
     const result = await pool.query(
-      'UPDATE items SET nome=$1, unidade=$2, preco=$3, categoria=$4 WHERE id=$5 RETURNING *',
-      [nome, unidade, preco, categoria, id]
+      'UPDATE items SET nome=$1, unidade=$2, preco=$3, preco_custo=$4, categoria=$5 WHERE id=$6 RETURNING *',
+      [nome, unidade, preco, preco_custo || preco, categoria, id]
     );
     res.json(result.rows[0]);
   } catch (e) {
