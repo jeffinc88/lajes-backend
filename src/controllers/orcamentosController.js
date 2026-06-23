@@ -20,19 +20,19 @@ const getOrcamentos = async (req, res) => {
 };
 
 const createOrcamento = async (req, res) => {
-  const { cliente, itens, total, detalhamentos, vendedor, frete, nota, validade, art, acrescimo, outrasDespesas, desconto, observacao, tipo_laje, margem } = req.body;
+  const { cliente, itens, total, detalhamentos, vendedor, frete, nota, validade, art, acrescimo, outrasDespesas, desconto, observacao, tipo_laje, margem, projeto_id } = req.body;
   try {
     const result = await pool.query(
       `INSERT INTO orcamentos 
-        (cliente, itens, total, detalhamentos, vendedor, frete, nota, validade, art, acrescimo, outras_despesas, desconto, observacao, tipo_laje, margem) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) 
+        (cliente, itens, total, detalhamentos, vendedor, frete, nota, validade, art, acrescimo, outras_despesas, desconto, observacao, tipo_laje, margem, projeto_id) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) 
        RETURNING *`,
       [
         JSON.stringify(cliente), JSON.stringify(itens), total,
         JSON.stringify(detalhamentos), JSON.stringify(vendedor),
         frete || 0, JSON.stringify(nota || null), validade || 30,
         art || 0, acrescimo || 0, outrasDespesas || 0, desconto || 0,
-        observacao || '', tipo_laje || null, margem || 1.3,
+        observacao || '', tipo_laje || null, margem || 1.3, projeto_id || null,
       ]
     );
     res.status(201).json(result.rows[0]);
