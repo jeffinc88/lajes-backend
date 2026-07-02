@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const fetch = require('node-fetch');
+const crypto = require('crypto');
 const { salvarToken, criarPedidoVenda } = require('../services/blingService');
 const authMiddleware = require('../middleware/auth');
 
@@ -10,7 +11,8 @@ const REDIRECT_URI = process.env.BLING_REDIRECT_URI || 'https://lajes-backend-pr
 
 // Rota para iniciar autenticação — abrir no navegador
 router.get('/auth', (req, res) => {
-  const url = `https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${BLING_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+  const state = crypto.randomBytes(16).toString('hex');
+  const url = `https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${BLING_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${state}`;
   res.redirect(url);
 });
 
