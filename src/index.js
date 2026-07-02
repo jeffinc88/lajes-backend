@@ -9,6 +9,7 @@ const usersRoutes = require('./routes/users');
 const itemsRoutes = require('./routes/items');
 const orcamentosRoutes = require('./routes/orcamentos');
 const projetosRoutes = require('./routes/projetos');
+const blingRoutes = require('./routes/bling');
 
 const app = express();
 
@@ -20,6 +21,7 @@ app.use('/users', usersRoutes);
 app.use('/items', itemsRoutes);
 app.use('/orcamentos', orcamentosRoutes);
 app.use('/projetos', projetosRoutes);
+app.use('/bling', blingRoutes);
 
 app.get('/', (req, res) => res.json({ status: 'ok' }));
 
