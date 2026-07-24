@@ -6,8 +6,27 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const getUsers = async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acesso negado.' });
   try {
-    const result = await pool.query('SELECT id, name, email, role FROM users ORDER BY name');
+    const result = await pool.query('SELECT id, name, email, role, must_change_password FROM users ORDER BY name');
     res.json(result.rows);
+  } catch (e) {
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+};
+
+const SENHA_PADRAO = '123456';
+
+const resetPassword = async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acesso negado.' });
+  const { id } = req.params;
+
+  try {
+    const hash = await bcrypt.hash(SENHA_PADRAO, 10);
+    const result = await pool.query(
+      'UPDATE users SET password = $1, must_change_password = true WHERE id = $2 RETURNING id',
+      [hash, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Usuário não encontrado.' });
+    res.json({ success: true, senhaPadrao: SENHA_PADRAO });
   } catch (e) {
     res.status(500).json({ error: 'Erro interno.' });
   }
@@ -48,4 +67,4 @@ const deleteUser = async (req, res) => {
   }
 };
 
-module.exports = { getUsers, createUser, deleteUser };
+module.exports = { getUsers, createUser, deleteUser, resetPassword };

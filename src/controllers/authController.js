@@ -26,11 +26,36 @@ const login = async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    res.json({
+      token,
+      user: {
+        id: user.id, name: user.name, email: user.email, role: user.role,
+        mustChangePassword: user.must_change_password,
+      },
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Erro interno.' });
   }
 };
 
-module.exports = { login };
+const changePassword = async (req, res) => {
+  const { newPassword } = req.body;
+  if (!newPassword || newPassword.length < 6) {
+    return res.status(400).json({ error: 'A senha deve ter no mínimo 6 caracteres.' });
+  }
+
+  try {
+    const hash = await bcrypt.hash(newPassword, 10);
+    await pool.query(
+      'UPDATE users SET password = $1, must_change_password = false WHERE id = $2',
+      [hash, req.user.id]
+    );
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+};
+
+module.exports = { login, changePassword };

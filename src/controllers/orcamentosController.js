@@ -59,18 +59,19 @@ const updateOrcamento = async (req, res) => {
     const tipoLaje = fields.tipo_laje !== undefined ? fields.tipo_laje : updated.tipo_laje || null;
     const blingPedidoId = fields.bling_pedido_id !== undefined ? fields.bling_pedido_id : updated.bling_pedido_id || null;
     const observacaoCliente = fields.observacaoCliente ?? fields.observacao_cliente ?? updated.observacao_cliente ?? '';
+    const pagamentoConfirmadoEm = fields.pagamento_confirmado_em !== undefined ? fields.pagamento_confirmado_em : updated.pagamento_confirmado_em || null;
     await pool.query(
       `UPDATE orcamentos SET
         cliente=$1, itens=$2, total=$3, detalhamentos=$4, status=$5, vendedor=$6,
         frete=$7, nota=$8, validade=$9, art=$10, acrescimo=$11, outras_despesas=$12,
-        desconto=$13, observacao=$14, motivo_perda=$15, margem=$16, tipo_laje=$17, bling_pedido_id=$18, observacao_cliente=$19
-       WHERE id=$20`,
+        desconto=$13, observacao=$14, motivo_perda=$15, margem=$16, tipo_laje=$17, bling_pedido_id=$18, observacao_cliente=$19, pagamento_confirmado_em=$20
+       WHERE id=$21`,
       [
         JSON.stringify(updated.cliente), JSON.stringify(updated.itens), total,
         JSON.stringify(updated.detalhamentos), updated.status, JSON.stringify(updated.vendedor),
         frete, JSON.stringify(updated.nota || null), updated.validade || 30,
         art, updated.acrescimo || 0, outrasDespesas, desconto,
-        updated.observacao || '', motivoPerda, margem, tipoLaje, blingPedidoId, observacaoCliente, id,
+        updated.observacao || '', motivoPerda, margem, tipoLaje, blingPedidoId, observacaoCliente, pagamentoConfirmadoEm, id,
       ]
     );
     res.json({ success: true });
