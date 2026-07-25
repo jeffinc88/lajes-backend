@@ -39,6 +39,28 @@ const login = async (req, res) => {
   }
 };
 
+const SENHA_PADRAO = '123456';
+
+const resetPassword = async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Informe o email.' });
+  }
+
+  try {
+    const hash = await bcrypt.hash(SENHA_PADRAO, 10);
+    const result = await pool.query(
+      'UPDATE users SET password = $1, must_change_password = true WHERE email = $2 RETURNING id',
+      [hash, email]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Email não encontrado.' });
+    res.json({ success: true, senhaPadrao: SENHA_PADRAO });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+};
+
 const changePassword = async (req, res) => {
   const { newPassword } = req.body;
   if (!newPassword || newPassword.length < 6) {
@@ -58,4 +80,4 @@ const changePassword = async (req, res) => {
   }
 };
 
-module.exports = { login, changePassword };
+module.exports = { login, changePassword, resetPassword };
