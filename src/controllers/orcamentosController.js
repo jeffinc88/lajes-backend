@@ -1,6 +1,32 @@
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
+const anexarParcelas = async (orcamentos) => {
+  if (orcamentos.length === 0) return orcamentos;
+  const ids = orcamentos.map(o => o.id);
+  const result = await pool.query(
+    'SELECT * FROM orcamento_parcelas WHERE orcamento_id = ANY($1::int[]) ORDER BY orcamento_id, numero',
+    [ids]
+  );
+  const porOrcamento = {};
+  result.rows.forEach(p => {
+    if (!porOrcamento[p.orcamento_id]) porOrcamento[p.orcamento_id] = [];
+    porOrcamento[p.orcamento_id].push(p);
+  });
+  return orcamentos.map(o => ({ ...o, parcelas: porOrcamento[o.id] || [] }));
+};
+
+const inserirParcelas = async (client, orcamentoId, parcelas) => {
+  if (!Array.isArray(parcelas) || parcelas.length === 0) return;
+  for (const p of parcelas) {
+    await client.query(
+      `INSERT INTO orcamento_parcelas (orcamento_id, numero, tipo, valor, vencimento_previsto, pago_em)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [orcamentoId, p.numero, p.tipo, parseFloat(p.valor || 0), p.vencimento_previsto || null, p.pago_em || null]
+    );
+  }
+};
+
 const getOrcamentos = async (req, res) => {
   try {
     let query, params;
@@ -12,7 +38,8 @@ const getOrcamentos = async (req, res) => {
       params = [req.user.id.toString()];
     }
     const result = await pool.query(query, params);
-    res.json(result.rows);
+    const comParcelas = await anexarParcelas(result.rows);
+    res.json(comParcelas);
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Erro interno.' });
@@ -20,12 +47,14 @@ const getOrcamentos = async (req, res) => {
 };
 
 const createOrcamento = async (req, res) => {
-  const { cliente, itens, total, detalhamentos, vendedor, frete, nota, validade, art, acrescimo, outrasDespesas, desconto, observacao, observacaoCliente, tipo_laje, margem, projeto_id } = req.body;
+  const { cliente, itens, total, detalhamentos, vendedor, frete, nota, validade, art, acrescimo, outrasDespesas, desconto, observacao, observacaoCliente, tipo_laje, margem, projeto_id, forma_pagamento, data_entrega_prevista, parcelas } = req.body;
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
+    await client.query('BEGIN');
+    const result = await client.query(
       `INSERT INTO orcamentos
-        (cliente, itens, total, detalhamentos, vendedor, frete, nota, validade, art, acrescimo, outras_despesas, desconto, observacao, observacao_cliente, tipo_laje, margem, projeto_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        (cliente, itens, total, detalhamentos, vendedor, frete, nota, validade, art, acrescimo, outras_despesas, desconto, observacao, observacao_cliente, tipo_laje, margem, projeto_id, forma_pagamento, data_entrega_prevista)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
        RETURNING *`,
       [
         JSON.stringify(cliente), JSON.stringify(itens), total,
@@ -33,21 +62,44 @@ const createOrcamento = async (req, res) => {
         frete || 0, JSON.stringify(nota || null), validade || 30,
         art || 0, acrescimo || 0, outrasDespesas || 0, desconto || 0,
         observacao || '', observacaoCliente || '', tipo_laje || null, margem || 1.3, projeto_id || null,
+        forma_pagamento || 'avista', data_entrega_prevista || null,
       ]
     );
-    res.status(201).json(result.rows[0]);
+    const orcamento = result.rows[0];
+    await inserirParcelas(client, orcamento.id, parcelas);
+    await client.query('COMMIT');
+    const [comParcelas] = await anexarParcelas([orcamento]);
+    res.status(201).json(comParcelas);
   } catch (e) {
+    await client.query('ROLLBACK');
     console.error(e);
     res.status(500).json({ error: 'Erro interno.' });
+  } finally {
+    client.release();
   }
+};
+
+const sincronizarPagamentoConfirmado = async (client, orcamentoId) => {
+  const parcelas = await client.query('SELECT pago_em FROM orcamento_parcelas WHERE orcamento_id=$1', [orcamentoId]);
+  if (parcelas.rows.length === 0) return;
+  const todasPagas = parcelas.rows.every(p => p.pago_em);
+  await client.query(
+    'UPDATE orcamentos SET pagamento_confirmado_em=$1 WHERE id=$2',
+    [todasPagas ? new Date().toISOString() : null, orcamentoId]
+  );
 };
 
 const updateOrcamento = async (req, res) => {
   const { id } = req.params;
   const fields = req.body;
+  const client = await pool.connect();
   try {
-    const current = await pool.query('SELECT * FROM orcamentos WHERE id=$1', [id]);
-    if (current.rows.length === 0) return res.status(404).json({ error: 'Orcamento nao encontrado.' });
+    await client.query('BEGIN');
+    const current = await client.query('SELECT * FROM orcamentos WHERE id=$1', [id]);
+    if (current.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Orcamento nao encontrado.' });
+    }
     const updated = { ...current.rows[0], ...fields };
     const outrasDespesas = parseFloat(fields.outrasDespesas ?? fields.outras_despesas ?? updated.outras_despesas ?? 0);
     const motivoPerda = fields.motivo_perda !== undefined ? fields.motivo_perda : updated.motivo_perda || null;
@@ -60,24 +112,72 @@ const updateOrcamento = async (req, res) => {
     const blingPedidoId = fields.bling_pedido_id !== undefined ? fields.bling_pedido_id : updated.bling_pedido_id || null;
     const observacaoCliente = fields.observacaoCliente ?? fields.observacao_cliente ?? updated.observacao_cliente ?? '';
     const pagamentoConfirmadoEm = fields.pagamento_confirmado_em !== undefined ? fields.pagamento_confirmado_em : updated.pagamento_confirmado_em || null;
-    await pool.query(
+    const formaPagamento = fields.forma_pagamento !== undefined ? fields.forma_pagamento : updated.forma_pagamento || 'avista';
+    const dataEntregaPrevista = fields.data_entrega_prevista !== undefined ? fields.data_entrega_prevista : updated.data_entrega_prevista || null;
+    await client.query(
       `UPDATE orcamentos SET
         cliente=$1, itens=$2, total=$3, detalhamentos=$4, status=$5, vendedor=$6,
         frete=$7, nota=$8, validade=$9, art=$10, acrescimo=$11, outras_despesas=$12,
-        desconto=$13, observacao=$14, motivo_perda=$15, margem=$16, tipo_laje=$17, bling_pedido_id=$18, observacao_cliente=$19, pagamento_confirmado_em=$20
-       WHERE id=$21`,
+        desconto=$13, observacao=$14, motivo_perda=$15, margem=$16, tipo_laje=$17, bling_pedido_id=$18, observacao_cliente=$19, pagamento_confirmado_em=$20,
+        forma_pagamento=$21, data_entrega_prevista=$22
+       WHERE id=$23`,
       [
         JSON.stringify(updated.cliente), JSON.stringify(updated.itens), total,
         JSON.stringify(updated.detalhamentos), updated.status, JSON.stringify(updated.vendedor),
         frete, JSON.stringify(updated.nota || null), updated.validade || 30,
         art, updated.acrescimo || 0, outrasDespesas, desconto,
-        updated.observacao || '', motivoPerda, margem, tipoLaje, blingPedidoId, observacaoCliente, pagamentoConfirmadoEm, id,
+        updated.observacao || '', motivoPerda, margem, tipoLaje, blingPedidoId, observacaoCliente, pagamentoConfirmadoEm,
+        formaPagamento, dataEntregaPrevista, id,
       ]
     );
+
+    if (fields.parcelas !== undefined) {
+      const existentes = await client.query('SELECT numero, pago_em FROM orcamento_parcelas WHERE orcamento_id=$1', [id]);
+      const pagoPorNumero = {};
+      existentes.rows.forEach(p => { pagoPorNumero[p.numero] = p.pago_em; });
+      await client.query('DELETE FROM orcamento_parcelas WHERE orcamento_id=$1', [id]);
+      const novasParcelas = (fields.parcelas || []).map(p => ({
+        ...p,
+        pago_em: p.pago_em !== undefined ? p.pago_em : (pagoPorNumero[p.numero] || null),
+      }));
+      await inserirParcelas(client, id, novasParcelas);
+      await sincronizarPagamentoConfirmado(client, id);
+    }
+
+    await client.query('COMMIT');
     res.json({ success: true });
   } catch (e) {
+    await client.query('ROLLBACK');
     console.error(e);
     res.status(500).json({ error: 'Erro interno.' });
+  } finally {
+    client.release();
+  }
+};
+
+const marcarParcelaPagamento = async (req, res) => {
+  const { parcelaId } = req.params;
+  const { pago } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const parcela = await client.query(
+      'UPDATE orcamento_parcelas SET pago_em=$1 WHERE id=$2 RETURNING orcamento_id',
+      [pago ? new Date().toISOString() : null, parcelaId]
+    );
+    if (parcela.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Parcela não encontrada.' });
+    }
+    await sincronizarPagamentoConfirmado(client, parcela.rows[0].orcamento_id);
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error(e);
+    res.status(500).json({ error: 'Erro interno.' });
+  } finally {
+    client.release();
   }
 };
 
@@ -129,4 +229,4 @@ const updateItemTiposLaje = async (req, res) => {
   }
 };
 
-module.exports = { getOrcamentos, createOrcamento, updateOrcamento, deleteOrcamento, getTiposLaje, getItemTiposLaje, updateItemTiposLaje };
+module.exports = { getOrcamentos, createOrcamento, updateOrcamento, deleteOrcamento, getTiposLaje, getItemTiposLaje, updateItemTiposLaje, marcarParcelaPagamento };
