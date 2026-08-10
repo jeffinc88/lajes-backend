@@ -114,20 +114,27 @@ const updateOrcamento = async (req, res) => {
     const pagamentoConfirmadoEm = fields.pagamento_confirmado_em !== undefined ? fields.pagamento_confirmado_em : updated.pagamento_confirmado_em || null;
     const formaPagamento = fields.forma_pagamento !== undefined ? fields.forma_pagamento : updated.forma_pagamento || 'avista';
     const dataEntregaPrevista = fields.data_entrega_prevista !== undefined ? fields.data_entrega_prevista : updated.data_entrega_prevista || null;
+    const statusAnterior = current.rows[0].status;
+    let confirmadoEm = current.rows[0].confirmado_em || null;
+    if (updated.status === 'confirmado' && statusAnterior !== 'confirmado') {
+      confirmadoEm = new Date().toISOString();
+    } else if (updated.status !== 'confirmado') {
+      confirmadoEm = null;
+    }
     await client.query(
       `UPDATE orcamentos SET
         cliente=$1, itens=$2, total=$3, detalhamentos=$4, status=$5, vendedor=$6,
         frete=$7, nota=$8, validade=$9, art=$10, acrescimo=$11, outras_despesas=$12,
         desconto=$13, observacao=$14, motivo_perda=$15, margem=$16, tipo_laje=$17, bling_pedido_id=$18, observacao_cliente=$19, pagamento_confirmado_em=$20,
-        forma_pagamento=$21, data_entrega_prevista=$22
-       WHERE id=$23`,
+        forma_pagamento=$21, data_entrega_prevista=$22, confirmado_em=$23
+       WHERE id=$24`,
       [
         JSON.stringify(updated.cliente), JSON.stringify(updated.itens), total,
         JSON.stringify(updated.detalhamentos), updated.status, JSON.stringify(updated.vendedor),
         frete, JSON.stringify(updated.nota || null), updated.validade || 30,
         art, updated.acrescimo || 0, outrasDespesas, desconto,
         updated.observacao || '', motivoPerda, margem, tipoLaje, blingPedidoId, observacaoCliente, pagamentoConfirmadoEm,
-        formaPagamento, dataEntregaPrevista, id,
+        formaPagamento, dataEntregaPrevista, confirmadoEm, id,
       ]
     );
 
