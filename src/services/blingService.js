@@ -180,13 +180,15 @@ const montarBodyPedido = async (orcamento, token) => {
   const notaVal = parseFloat(nota?.valor || 0);
   const outrasDespesasBase = parseFloat(orcamento.outras_despesas || 0);
   const outrasDespesasTotal = outrasDespesasBase + artVal + notaVal;
+  const margem = parseFloat(orcamento.margem || 1.3);
+  const freteComMargem = parseFloat((parseFloat(orcamento.frete || 0) * margem).toFixed(2));
 
   return {
     data: hoje,
     dataSaida: hoje,
     contato: { id: clienteId },
     itens: itensBling,
-    transporte: { frete: parseFloat(orcamento.frete || 0) },
+    transporte: { frete: freteComMargem },
     desconto: { valor: parseFloat(orcamento.desconto || 0), tipo: 'V' },
     outrasDespesas: outrasDespesasTotal,
     observacoes: observacao,

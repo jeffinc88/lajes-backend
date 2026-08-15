@@ -114,12 +114,9 @@ const updateOrcamento = async (req, res) => {
     const pagamentoConfirmadoEm = fields.pagamento_confirmado_em !== undefined ? fields.pagamento_confirmado_em : updated.pagamento_confirmado_em || null;
     const formaPagamento = fields.forma_pagamento !== undefined ? fields.forma_pagamento : updated.forma_pagamento || 'avista';
     const dataEntregaPrevista = fields.data_entrega_prevista !== undefined ? fields.data_entrega_prevista : updated.data_entrega_prevista || null;
-    const statusAnterior = current.rows[0].status;
     let confirmadoEm = current.rows[0].confirmado_em || null;
-    if (updated.status === 'confirmado' && statusAnterior !== 'confirmado') {
-      confirmadoEm = new Date().toISOString();
-    } else if (updated.status !== 'confirmado') {
-      confirmadoEm = null;
+    if (updated.status === 'confirmado') {
+      confirmadoEm = fields.confirmado_em || confirmadoEm || new Date().toISOString();
     }
     await client.query(
       `UPDATE orcamentos SET
@@ -188,6 +185,21 @@ const marcarParcelaPagamento = async (req, res) => {
   }
 };
 
+const marcarImpresso = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      'UPDATE orcamentos SET impresso_em = now() WHERE id = $1 RETURNING *',
+      [id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Orçamento não encontrado.' });
+    res.json(result.rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+};
+
 const deleteOrcamento = async (req, res) => {
   const { id } = req.params;
   try {
@@ -236,4 +248,4 @@ const updateItemTiposLaje = async (req, res) => {
   }
 };
 
-module.exports = { getOrcamentos, createOrcamento, updateOrcamento, deleteOrcamento, getTiposLaje, getItemTiposLaje, updateItemTiposLaje, marcarParcelaPagamento };
+module.exports = { getOrcamentos, createOrcamento, updateOrcamento, deleteOrcamento, getTiposLaje, getItemTiposLaje, updateItemTiposLaje, marcarParcelaPagamento, marcarImpresso };

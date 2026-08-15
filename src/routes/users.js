@@ -6,7 +6,10 @@ const {
   createUser,
   deleteUser,
   resetPassword,
+  updatePushToken,
 } = require('../controllers/usersController');
+
+router.put('/push-token', authMiddleware, updatePushToken);
 
 router.get('/', authMiddleware, getUsers);
 router.post('/', authMiddleware, createUser);

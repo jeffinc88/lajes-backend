@@ -11,6 +11,7 @@ const orcamentosRoutes = require('./routes/orcamentos');
 const projetosRoutes = require('./routes/projetos');
 const blingRoutes = require('./routes/bling');
 const pagamentoRoutes = require('./routes/pagamento');
+const iniciarNotificacoesCron = require('./jobs/notificationsCron');
 
 const app = express();
 
@@ -26,6 +27,8 @@ app.use('/bling', blingRoutes);
 app.use('/pagamento', pagamentoRoutes);
 
 app.get('/', (req, res) => res.json({ status: 'ok' }));
+
+iniciarNotificacoesCron();
 
 const PORT = process.env.PORT || 3000;
 // ─── Coach IA ──────────────────────────────────────────────

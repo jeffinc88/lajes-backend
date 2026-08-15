@@ -67,4 +67,16 @@ const deleteUser = async (req, res) => {
   }
 };
 
-module.exports = { getUsers, createUser, deleteUser, resetPassword };
+const updatePushToken = async (req, res) => {
+  const { push_token } = req.body;
+  if (!push_token) return res.status(400).json({ error: 'push_token é obrigatório.' });
+
+  try {
+    await pool.query('UPDATE users SET push_token = $1 WHERE id = $2', [push_token, req.user.id]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+};
+
+module.exports = { getUsers, createUser, deleteUser, resetPassword, updatePushToken };
