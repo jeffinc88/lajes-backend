@@ -11,6 +11,7 @@ const orcamentosRoutes = require('./routes/orcamentos');
 const projetosRoutes = require('./routes/projetos');
 const blingRoutes = require('./routes/bling');
 const pagamentoRoutes = require('./routes/pagamento');
+const recebimentoRoutes = require('./routes/recebimento');
 const iniciarNotificacoesCron = require('./jobs/notificationsCron');
 
 const app = express();
@@ -25,6 +26,7 @@ app.use('/orcamentos', orcamentosRoutes);
 app.use('/projetos', projetosRoutes);
 app.use('/bling', blingRoutes);
 app.use('/pagamento', pagamentoRoutes);
+app.use('/recebimento', recebimentoRoutes);
 
 app.get('/', (req, res) => res.json({ status: 'ok' }));
 
