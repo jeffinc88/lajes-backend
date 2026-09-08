@@ -76,11 +76,48 @@ const getToken = async () => {
   }
 };
 
+const validarCPF = (cpf) => {
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+  let soma = 0;
+  for (let i = 0; i < 9; i++) soma += parseInt(cpf[i], 10) * (10 - i);
+  let resto = (soma * 10) % 11;
+  if (resto === 10) resto = 0;
+  if (resto !== parseInt(cpf[9], 10)) return false;
+  soma = 0;
+  for (let i = 0; i < 10; i++) soma += parseInt(cpf[i], 10) * (11 - i);
+  resto = (soma * 10) % 11;
+  if (resto === 10) resto = 0;
+  return resto === parseInt(cpf[10], 10);
+};
+
+const validarCNPJ = (cnpj) => {
+  if (cnpj.length !== 14 || /^(\d)\1{13}$/.test(cnpj)) return false;
+  const calcularDigito = (base) => {
+    const pesos = base.length === 12
+      ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+      : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    const soma = base.split('').reduce((acc, d, i) => acc + parseInt(d, 10) * pesos[i], 0);
+    const resto = soma % 11;
+    return resto < 2 ? 0 : 11 - resto;
+  };
+  const d1 = calcularDigito(cnpj.slice(0, 12));
+  if (d1 !== parseInt(cnpj[12], 10)) return false;
+  const d2 = calcularDigito(cnpj.slice(0, 12) + d1);
+  return d2 === parseInt(cnpj[13], 10);
+};
+
+// Nome do contato no Bling tem limite de tamanho — cortar evita 400 quando
+// o campo vem com endereço/observação colados junto (visto em orçamentos reais).
+const sanitizarNomeCliente = (nome) => (nome || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+
 const buscarOuCriarCliente = async (token, cliente) => {
   const cpfRaw = (cliente.cpf || '').replace(/\D/g, '');
   const telRaw = (cliente.telefone || '').replace(/\D/g, '');
-  const cpfValido = cpfRaw.length === 11 || cpfRaw.length === 14;
+  // Dígito verificador de verdade — "99999999999" tem o tamanho certo mas o
+  // Bling rejeita ao criar o contato, derrubando o pedido inteiro.
+  const cpfValido = cpfRaw.length === 14 ? validarCNPJ(cpfRaw) : validarCPF(cpfRaw);
   const telValido = telRaw.length >= 10;
+  const nomeSanitizado = sanitizarNomeCliente(cliente.nome);
 
   console.log('Buscando cliente CPF:', cpfRaw);
 
@@ -95,7 +132,7 @@ const buscarOuCriarCliente = async (token, cliente) => {
 
   // Criar cliente novo — só incluir campos válidos
   const body = {
-    nome: cliente.nome,
+    nome: nomeSanitizado,
     tipo: cpfRaw.length === 14 ? 'J' : 'F',
     situacao: 'A',
   };
