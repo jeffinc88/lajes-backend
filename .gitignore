@@ -16,3 +16,4 @@ yarn-error.log*
 
 # Expo
 .expo/
+.ai-memory.toml
