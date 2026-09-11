@@ -10,7 +10,9 @@ const request = (method, path, body, headers = {}) => {
   return new Promise((resolve, reject) => {
     const bodyStr = body ? (typeof body === 'string' ? body : JSON.stringify(body)) : '';
     const req = https.request({
-      hostname: 'www.bling.com.br',
+      // Bling bloqueou requisicoes de API em www.bling.com.br (retorna 403 FORBIDDEN);
+      // o endpoint oficial de API agora e api.bling.com.br.
+      hostname: 'api.bling.com.br',
       path,
       method,
       headers: {

@@ -12,7 +12,10 @@ const REDIRECT_URI = process.env.BLING_REDIRECT_URI || 'https://lajes-backend-pr
 const postToBling = (path, body, headers) => {
   return new Promise((resolve, reject) => {
     const req = https.request({
-      hostname: 'www.bling.com.br',
+      // Bling bloqueou requisicoes de API em www.bling.com.br (retorna 403 FORBIDDEN);
+      // o endpoint oficial de API agora e api.bling.com.br. O /oauth/authorize
+      // (pagina de login do usuario) continua em www.bling.com.br propositalmente.
+      hostname: 'api.bling.com.br',
       path,
       method: 'POST',
       headers: {
