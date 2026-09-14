@@ -110,7 +110,54 @@ const validarCNPJ = (cnpj) => {
 
 // Nome do contato no Bling tem limite de tamanho — cortar evita 400 quando
 // o campo vem com endereço/observação colados junto (visto em orçamentos reais).
-const sanitizarNomeCliente = (nome) => (nome || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+// Também remove pronomes de tratamento (Sr./Sra.) que vendedores às vezes
+// digitam junto do nome — o Bling não espera isso no campo "nome".
+const sanitizarNomeCliente = (nome) => (nome || '')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .replace(/^(sr|sra|srs|sras|senhor|senhora|dr|dra)\.?\s+/i, '')
+  .trim()
+  .slice(0, 100);
+
+// Campos opcionais que, isoladamente, podem fazer o Bling recusar a criação
+// do contato (documento duplicado/inválido perante a Receita, telefone ou
+// endereço malformado). Removemos um de cada vez e tentamos de novo, na
+// ordem de "mais provável de ser o problema" — assim o pedido nunca trava
+// por causa de um campo secundário; na pior hipótese o cliente é criado só
+// com nome.
+const CAMPOS_OPCIONAIS_CLIENTE = ['numeroDocumento', 'telefone', 'endereco'];
+
+const criarContatoComFallback = async (token, bodyBase) => {
+  const body = { ...bodyBase };
+  let ultimaResposta = null;
+
+  for (let tentativa = 0; tentativa <= CAMPOS_OPCIONAIS_CLIENTE.length; tentativa++) {
+    if (tentativa > 0) {
+      const campo = CAMPOS_OPCIONAIS_CLIENTE[tentativa - 1];
+      if (!(campo in body)) continue;
+      console.log(
+        `Criação de cliente recusada pelo Bling (${ultimaResposta?.data?.error?.description || ultimaResposta?.status}), tentando novamente sem "${campo}"`
+      );
+      delete body[campo];
+    }
+
+    const { status, data } = await request('POST', '/Api/v3/contatos', body, {
+      'Authorization': `Bearer ${token}`,
+    });
+    ultimaResposta = { status, data };
+    if (status < 400 && data.data?.id) {
+      const camposRemovidos = Object.keys(bodyBase).filter(k => !(k in body));
+      return { id: data.data.id, camposRemovidos };
+    }
+  }
+
+  // Nenhuma tentativa funcionou (nem mesmo só com nome) — aí sim é erro de verdade.
+  throw new Error(
+    ultimaResposta?.data?.error?.description ||
+    ultimaResposta?.data?.error?.message ||
+    'Bling recusou a criação do cliente'
+  );
+};
 
 const buscarOuCriarCliente = async (token, cliente) => {
   const cpfRaw = (cliente.cpf || '').replace(/\D/g, '');
@@ -129,7 +176,7 @@ const buscarOuCriarCliente = async (token, cliente) => {
       'Authorization': `Bearer ${token}`,
     });
     console.log('Busca cliente status:', status, 'resultados:', data.data?.length || 0);
-    if (data.data?.length > 0) return data.data[0].id;
+    if (data.data?.length > 0) return { id: data.data[0].id, avisos: [] };
   }
 
   // Criar cliente novo — só incluir campos válidos
@@ -152,11 +199,12 @@ const buscarOuCriarCliente = async (token, cliente) => {
   }
 
   console.log('Criando cliente:', JSON.stringify(body, null, 2));
-  const { status, data } = await request('POST', '/Api/v3/contatos', body, {
-    'Authorization': `Bearer ${token}`,
-  });
-  console.log('Criação cliente status:', status, 'data:', JSON.stringify(data, null, 2));
-  return data.data?.id || null;
+  const { id, camposRemovidos } = await criarContatoComFallback(token, body);
+  console.log('Criação cliente OK, id:', id, camposRemovidos.length ? `(sem: ${camposRemovidos.join(', ')})` : '');
+
+  const LABELS = { numeroDocumento: 'CPF/CNPJ', telefone: 'telefone', endereco: 'endereço' };
+  const avisos = camposRemovidos.map(c => `${LABELS[c] || c} não foi aceito pelo Bling e ficou de fora do cadastro do cliente`);
+  return { id, avisos };
 };
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -191,7 +239,7 @@ const montarBodyPedido = async (orcamento, token) => {
     result.rows.forEach(r => { skuMap[r.id] = r.bling_sku; });
   }
 
-  const clienteId = await buscarOuCriarCliente(token, cliente);
+  const { id: clienteId, avisos: avisosCliente } = await buscarOuCriarCliente(token, cliente);
   if (!clienteId) throw new Error('Não foi possível vincular cliente no Bling');
 
   // Buscar ID do produto no Bling pelo SKU (sequencial com delay para respeitar rate limit)
@@ -231,7 +279,10 @@ const montarBodyPedido = async (orcamento, token) => {
     desconto: { valor: parseFloat(orcamento.desconto || 0), tipo: 'V' },
     outrasDespesas: outrasDespesasTotal,
     observacoes: observacao,
-    observacoesInternas: `Outras despesas: R$ ${outrasDespesasBase.toFixed(2)} | ART: R$ ${artVal.toFixed(2)} | Nota Fiscal ${nota?.tipo || ''}: R$ ${notaVal.toFixed(2)}`,
+    observacoesInternas: [
+      `Outras despesas: R$ ${outrasDespesasBase.toFixed(2)} | ART: R$ ${artVal.toFixed(2)} | Nota Fiscal ${nota?.tipo || ''}: R$ ${notaVal.toFixed(2)}`,
+      ...(avisosCliente || []),
+    ].join(' | '),
   };
 };
 
