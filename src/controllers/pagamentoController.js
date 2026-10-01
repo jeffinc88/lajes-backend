@@ -41,6 +41,46 @@ const updateTabelaJuros = async (req, res) => {
   }
 };
 
+const getTabelaJurosLink = async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM tabela_juros_link_pagamento ORDER BY numero_parcelas');
+    res.json(result.rows);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+};
+
+const updateTabelaJurosLink = async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acesso negado.' });
+  const linhas = req.body;
+  if (!Array.isArray(linhas)) return res.status(400).json({ error: 'Formato inválido.' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM tabela_juros_link_pagamento');
+    for (const linha of linhas) {
+      const numeroParcelas = parseInt(linha.numero_parcelas, 10);
+      const percentual = parseFloat(linha.percentual || 0);
+      if (!numeroParcelas) continue;
+      await client.query(
+        'INSERT INTO tabela_juros_link_pagamento (numero_parcelas, percentual) VALUES ($1, $2)',
+        [numeroParcelas, percentual]
+      );
+    }
+    await client.query('COMMIT');
+    const result = await pool.query('SELECT * FROM tabela_juros_link_pagamento ORDER BY numero_parcelas');
+    res.json(result.rows);
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error(e);
+    res.status(500).json({ error: 'Erro interno.' });
+  } finally {
+    client.release();
+  }
+};
+
 const getConfigPagamento = async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM config_pagamento WHERE id=1');
@@ -67,4 +107,8 @@ const updateConfigPagamento = async (req, res) => {
   }
 };
 
-module.exports = { getTabelaJuros, updateTabelaJuros, getConfigPagamento, updateConfigPagamento };
+module.exports = {
+  getTabelaJuros, updateTabelaJuros,
+  getTabelaJurosLink, updateTabelaJurosLink,
+  getConfigPagamento, updateConfigPagamento,
+};
