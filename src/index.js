@@ -12,6 +12,7 @@ const projetosRoutes = require('./routes/projetos');
 const blingRoutes = require('./routes/bling');
 const pagamentoRoutes = require('./routes/pagamento');
 const recebimentoRoutes = require('./routes/recebimento');
+const empresaRoutes = require('./routes/empresa');
 const iniciarNotificacoesCron = require('./jobs/notificationsCron');
 
 const app = express();
@@ -27,6 +28,7 @@ app.use('/projetos', projetosRoutes);
 app.use('/bling', blingRoutes);
 app.use('/pagamento', pagamentoRoutes);
 app.use('/recebimento', recebimentoRoutes);
+app.use('/empresa', empresaRoutes);
 
 app.get('/', (req, res) => res.json({ status: 'ok' }));
 

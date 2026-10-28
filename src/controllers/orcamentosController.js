@@ -200,6 +200,21 @@ const marcarImpresso = async (req, res) => {
   }
 };
 
+const marcarFollowUpFeito = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(
+      'UPDATE orcamentos SET followup_feito_em = now() WHERE id = $1 RETURNING *',
+      [id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Orçamento não encontrado.' });
+    res.json(result.rows[0]);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Erro interno.' });
+  }
+};
+
 const deleteOrcamento = async (req, res) => {
   const { id } = req.params;
   try {
@@ -248,4 +263,4 @@ const updateItemTiposLaje = async (req, res) => {
   }
 };
 
-module.exports = { getOrcamentos, createOrcamento, updateOrcamento, deleteOrcamento, getTiposLaje, getItemTiposLaje, updateItemTiposLaje, marcarParcelaPagamento, marcarImpresso };
+module.exports = { getOrcamentos, createOrcamento, updateOrcamento, deleteOrcamento, getTiposLaje, getItemTiposLaje, updateItemTiposLaje, marcarParcelaPagamento, marcarImpresso, marcarFollowUpFeito };

@@ -11,6 +11,7 @@ const {
   updateItemTiposLaje,
   marcarParcelaPagamento,
   marcarImpresso,
+  marcarFollowUpFeito,
 } = require('../controllers/orcamentosController');
 
 // Rotas específicas ANTES das rotas com parâmetro /:id
@@ -19,6 +20,7 @@ router.get('/item-tipos-laje', authMiddleware, getItemTiposLaje);
 router.put('/item-tipos-laje/:id', authMiddleware, updateItemTiposLaje);
 router.put('/parcelas/:parcelaId/pagamento', authMiddleware, marcarParcelaPagamento);
 router.put('/:id/impresso', authMiddleware, marcarImpresso);
+router.put('/:id/followup-feito', authMiddleware, marcarFollowUpFeito);
 
 router.get('/', authMiddleware, getOrcamentos);
 router.post('/', authMiddleware, createOrcamento);
