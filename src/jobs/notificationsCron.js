@@ -107,7 +107,7 @@ const rodarJobNotificacoes = async () => {
   }
 };
 
-// Processo roda sempre ligado no Fly (min_machines_running=1), então um cron
+// Processo roda sempre ligado no Railway, então um cron
 // in-process é suficiente — não precisa de fila/scheduler externo.
 module.exports = () => {
   cron.schedule('*/30 * * * *', rodarJobNotificacoes);

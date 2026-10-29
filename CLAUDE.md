@@ -10,14 +10,16 @@ Usado pela equipe de vendas para criar e gerenciar orçamentos, acompanhar proje
 ### Backend
 - **Runtime:** Node.js com Express
 - **Banco de dados:** PostgreSQL via Supabase
-- **Deploy:** Fly.io (app `lajes-backend-verdant-starlight-8175`, região `gru`), via GitHub Actions (`.github/workflows/fly-deploy.yml`) a cada push na branch `main` do GitHub — usuário `jeffinc88`
+- **Deploy:** Railway (`https://lajes-backend-verdant-starlight-8175-production-fbb6.up.railway.app`), automático pela integração do Railway com o GitHub a cada push na branch `main` de `jeffinc88/lajes-backend` (usa o `Dockerfile`)
 - **Autenticação:** JWT com dois roles: `admin` e `vendedor`
 - **Geração de PDF:** Feita no frontend via `expo-print` + `expo-sharing`
 
 ### Frontend
 - **Framework:** React Native com Expo (pasta `grill-me/`)
 - **Testes locais:** Expo Go (via QR code)
-- **Build de produção:** EAS Build
+- **Build de produção:** EAS Build (APK para Android, canal `preview`)
+- **iPhones:** usam a versão web, publicada no EAS Hosting (`npx eas-cli deploy --prod`). Na web o PDF é gerado por `grill-me/src/services/pdfWeb.web.js` (html2canvas + jspdf) e o `Alert.alert` é substituído por `WebAlertHost`
+- **Publicar o app:** `publicar-app.bat` na raiz faz o `eas update` (Android) e o deploy da web
 - **Navegação:** React Navigation (`@react-navigation/native` + `native-stack`)
 - **Estilização:** `StyleSheet` nativo do React Native (sem biblioteca externa)
 - **Email:** `expo-mail-composer`
@@ -84,7 +86,7 @@ Lajes App/                      ← monorepo raiz
 - Todas as rotas (exceto `/login`) exigem JWT válido no header `Authorization: Bearer <token>`
 - O middleware `auth.js` decodifica o token e injeta `req.user` com `{ id, role, nome }`
 - Role `admin` tem acesso total; role `vendedor` vê apenas seus próprios dados
-- **Nunca expor senhas, tokens ou chaves de API no código** — variáveis de ambiente ficam nos secrets do Fly.io (`fly secrets set`)
+- **Nunca expor senhas, tokens ou chaves de API no código** — variáveis de ambiente ficam nas Variables do serviço no painel do Railway
 
 ---
 
@@ -124,17 +126,17 @@ Não reimplementar nem duplicar o que já existe:
 - ❌ Não alterar a tabela `projetos` sem migration descrita como SQL
 - ❌ Não adicionar novas dependências pesadas sem justificar no relatório de arquitetura
 - ❌ Não criar sistema de autenticação novo — o JWT com roles já está funcionando
-- ❌ Não fazer deploy automático — o GitHub Actions + Fly.io já cuidam disso via push na main
+- ❌ Não fazer deploy automático — o Railway já cuida disso via push na main
 - ❌ Não usar `console.log` para dados sensíveis (tokens, senhas, CPFs)
 
 ---
 
 ## Variáveis de ambiente (não estão no .env local)
 
-Ficam configuradas como secrets no Fly.io (`fly secrets list` / `fly secrets set NOME=valor -a lajes-backend-verdant-starlight-8175`).
+Ficam configuradas nas Variables do serviço no painel do Railway.
 **Nunca commitar valores reais aqui** — este arquivo vai pro Git.
 Para rodar localmente, copie `.env.example` para `.env` e preencha com os valores reais
-(peça ao dono do projeto ou rode `fly secrets list`):
+(peça ao dono do projeto ou veja no painel do Railway):
 
 ```
 DATABASE_URL=postgresql://<user>:<password>@<host>:<port>/postgres
@@ -149,8 +151,8 @@ ANTHROPIC_API_KEY=<anthropic-api-key>
 ## Fluxo de desenvolvimento
 
 1. Desenvolver e testar localmente
-2. Push na branch `main` do repositório `jeffinc88/[PREENCHER nome do repo]`
-3. O GitHub Actions detecta o push e faz deploy automático do backend no Fly.io
+2. Push na branch `main` do repositório `jeffinc88/lajes-backend`
+3. O Railway detecta o push e faz deploy automático do backend
 4. Testar frontend via Expo Go antes de gerar build EAS
 
 ---
@@ -169,6 +171,5 @@ ANTHROPIC_API_KEY=<anthropic-api-key>
 
 Abra este arquivo e complete os trechos marcados com `[PREENCHER]`:
 
-- [ ] Nome exato do repo no GitHub (`jeffinc88/???`) — veja em github.com/jeffinc88
 - [ ] Outras tabelas do banco além das listadas — veja no painel do Supabase → Table Editor
-- [ ] Outras variáveis de ambiente além de `DATABASE_URL`, `JWT_SECRET` e `PORT` — rode `fly secrets list`
+- [ ] Outras variáveis de ambiente além de `DATABASE_URL`, `JWT_SECRET` e `PORT` — veja as Variables no painel do Railway
