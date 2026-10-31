@@ -56,6 +56,9 @@ const processarPagamentoPendente = async () => {
      WHERE o.status = 'confirmado'
        AND o.pagamento_confirmado_em IS NULL
        AND u.push_token IS NOT NULL
+       -- Fechamento em conjunto avisa uma vez só, pelo orçamento de menor número.
+       AND (o.fechamento_id IS NULL
+            OR o.id = (SELECT MIN(m.id) FROM orcamentos m WHERE m.fechamento_id = o.fechamento_id))
        AND NOT EXISTS (
          SELECT 1 FROM notifications_log n
          WHERE n.orcamento_id = o.id AND n.tipo = 'pagamento_pendente' AND n.user_id = u.id

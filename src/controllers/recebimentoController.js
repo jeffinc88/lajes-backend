@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const { sincronizarPagamentoFechamento } = require('./fechamentosController');
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -79,10 +80,11 @@ const getPendencias = async (req, res) => {
               o.cliente->>'nome'    AS cliente_nome,
               o.vendedor->>'nome'   AS vendedor_nome,
               o.vendedor->>'id'     AS vendedor_id,
-              o.total,
+              COALESCE(f.total, o.total) AS total,
               o.forma_pagamento,
               o.confirmado_em,
               o.created_at,
+              o.fechamento_id,
               COUNT(p.id)                                              AS parcelas_total,
               COUNT(p.id) FILTER (WHERE p.vencimento_previsto IS NULL) AS parcelas_sem_data,
               EXISTS (
@@ -90,11 +92,16 @@ const getPendencias = async (req, res) => {
                 WHERE pr.orcamento_id = o.id AND pr.status = 'pendente'
               ) AS tem_promessa
          FROM orcamentos o
-         LEFT JOIN orcamento_parcelas p ON p.orcamento_id = o.id
+         LEFT JOIN fechamentos f ON f.id = o.fechamento_id
+         LEFT JOIN orcamento_parcelas p
+                ON p.orcamento_id = o.id OR (f.id IS NOT NULL AND p.fechamento_id = f.id)
         WHERE o.status = 'confirmado'
           AND o.pagamento_confirmado_em IS NULL
+          -- Fechamento em conjunto aparece uma vez, pelo orçamento de menor número.
+          AND (o.fechamento_id IS NULL
+               OR o.id = (SELECT MIN(m.id) FROM orcamentos m WHERE m.fechamento_id = o.fechamento_id))
           ${filtrarPorVendedor ? "AND o.vendedor->>'id' = $1" : ''}
-        GROUP BY o.id
+        GROUP BY o.id, f.id
        HAVING COUNT(p.id) = 0
            OR COUNT(p.id) FILTER (WHERE p.vencimento_previsto IS NULL) > 0
         ORDER BY COALESCE(o.confirmado_em, o.created_at) DESC`,
@@ -114,16 +121,20 @@ const getPendencias = async (req, res) => {
     );
 
     const parcelas = await pool.query(
-      `SELECT p.id AS parcela_id, p.orcamento_id, p.numero, p.tipo, p.valor, p.vencimento_previsto,
+      `SELECT p.id AS parcela_id, o.id AS orcamento_id, p.fechamento_id, p.numero, p.tipo, p.valor, p.vencimento_previsto,
               o.cliente->>'nome'  AS cliente_nome,
               o.vendedor->>'nome' AS vendedor_nome
          FROM orcamento_parcelas p
-         JOIN orcamentos o ON o.id = p.orcamento_id
+         -- Parcela de fechamento em conjunto aponta para o orçamento de menor número do grupo.
+         JOIN orcamentos o ON o.id = COALESCE(
+           p.orcamento_id,
+           (SELECT MIN(m.id) FROM orcamentos m WHERE m.fechamento_id = p.fechamento_id)
+         )
         WHERE p.pago_em IS NULL
           AND p.vencimento_previsto IS NOT NULL
           AND o.status = 'confirmado'
           ${filtrarPorVendedor ? "AND o.vendedor->>'id' = $1" : ''}
-        ORDER BY p.vencimento_previsto, p.orcamento_id, p.numero`,
+        ORDER BY p.vencimento_previsto, o.id, p.numero`,
       filtrarPorVendedor ? [vendedorId] : []
     );
 
@@ -301,8 +312,15 @@ const marcarPaga = async (req, res) => {
       [quando, valor, promessa.id]
     );
     if (promessa.parcela_id) {
-      await client.query('UPDATE orcamento_parcelas SET pago_em=$1 WHERE id=$2', [quando, promessa.parcela_id]);
-      await sincronizarPagamentoConfirmado(client, promessa.orcamento_id);
+      const parcela = await client.query(
+        'UPDATE orcamento_parcelas SET pago_em=$1 WHERE id=$2 RETURNING fechamento_id',
+        [quando, promessa.parcela_id]
+      );
+      if (parcela.rows[0]?.fechamento_id) {
+        await sincronizarPagamentoFechamento(client, parcela.rows[0].fechamento_id);
+      } else {
+        await sincronizarPagamentoConfirmado(client, promessa.orcamento_id);
+      }
     }
     await client.query('COMMIT');
     res.json(result.rows[0]);

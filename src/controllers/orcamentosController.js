@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const { buscarFechamentos, sincronizarPagamentoFechamento } = require('./fechamentosController');
 
 const anexarParcelas = async (orcamentos) => {
   if (orcamentos.length === 0) return orcamentos;
@@ -39,7 +40,8 @@ const getOrcamentos = async (req, res) => {
     }
     const result = await pool.query(query, params);
     const comParcelas = await anexarParcelas(result.rows);
-    res.json(comParcelas);
+    const fechamentos = await buscarFechamentos(comParcelas.map(o => o.fechamento_id));
+    res.json(comParcelas.map(o => (o.fechamento_id ? { ...o, fechamento: fechamentos[o.fechamento_id] || null } : o)));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Erro interno.' });
@@ -99,6 +101,17 @@ const updateOrcamento = async (req, res) => {
     if (current.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Orcamento nao encontrado.' });
+    }
+    // Orçamento de um fechamento em conjunto: status e pagamento são do fechamento.
+    const fechamentoId = current.rows[0].fechamento_id;
+    if (fechamentoId && fields.status !== undefined && fields.status !== 'confirmado') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Este orçamento faz parte de um fechamento em conjunto. Desfaça o fechamento antes.' });
+    }
+    if (fechamentoId) {
+      delete fields.pagamento_confirmado_em;
+      delete fields.forma_pagamento;
+      delete fields.parcelas;
     }
     const updated = { ...current.rows[0], ...fields };
     const outrasDespesas = parseFloat(fields.outrasDespesas ?? fields.outras_despesas ?? updated.outras_despesas ?? 0);
@@ -166,14 +179,18 @@ const marcarParcelaPagamento = async (req, res) => {
   try {
     await client.query('BEGIN');
     const parcela = await client.query(
-      'UPDATE orcamento_parcelas SET pago_em=$1 WHERE id=$2 RETURNING orcamento_id',
+      'UPDATE orcamento_parcelas SET pago_em=$1 WHERE id=$2 RETURNING orcamento_id, fechamento_id',
       [pago ? new Date().toISOString() : null, parcelaId]
     );
     if (parcela.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Parcela não encontrada.' });
     }
-    await sincronizarPagamentoConfirmado(client, parcela.rows[0].orcamento_id);
+    if (parcela.rows[0].fechamento_id) {
+      await sincronizarPagamentoFechamento(client, parcela.rows[0].fechamento_id);
+    } else {
+      await sincronizarPagamentoConfirmado(client, parcela.rows[0].orcamento_id);
+    }
     await client.query('COMMIT');
     res.json({ success: true });
   } catch (e) {
@@ -218,6 +235,10 @@ const marcarFollowUpFeito = async (req, res) => {
 const deleteOrcamento = async (req, res) => {
   const { id } = req.params;
   try {
+    const membro = await pool.query('SELECT fechamento_id FROM orcamentos WHERE id=$1', [id]);
+    if (membro.rows[0]?.fechamento_id) {
+      return res.status(409).json({ error: 'Este orçamento faz parte de um fechamento em conjunto. Desfaça o fechamento antes.' });
+    }
     await pool.query('DELETE FROM orcamentos WHERE id=$1', [id]);
     res.json({ success: true });
   } catch (e) {

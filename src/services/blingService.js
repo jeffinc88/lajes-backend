@@ -259,7 +259,7 @@ const montarBodyPedido = async (orcamento, token) => {
   const observacao = [
     orcamento.observacao || '',
     `Tipo de Laje: ${orcamento.tipo_laje || ''}`,
-    `Orçamento Nº ${orcamento.id} - App Carvalho`,
+    `${orcamento.referencia_bling || `Orçamento Nº ${orcamento.id}`} - App Carvalho`,
   ].filter(Boolean).join(' | ');
 
   const hoje = new Date().toISOString().split('T')[0];

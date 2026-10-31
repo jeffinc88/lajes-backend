@@ -1,5 +1,6 @@
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const { buscarFechamentos } = require('./fechamentosController');
 
 const getProjetos = async (req, res) => {
   try {
@@ -14,10 +15,11 @@ const getProjetos = async (req, res) => {
     const projetos = await pool.query(query, params);
     // Buscar orçamentos de cada projeto
     const orcamentos = await pool.query('SELECT * FROM orcamentos WHERE projeto_id IS NOT NULL ORDER BY created_at ASC');
+    const fechamentos = await buscarFechamentos(orcamentos.rows.map(o => o.fechamento_id));
     const orcamentosPorProjeto = {};
     orcamentos.rows.forEach(o => {
       if (!orcamentosPorProjeto[o.projeto_id]) orcamentosPorProjeto[o.projeto_id] = [];
-      orcamentosPorProjeto[o.projeto_id].push(o);
+      orcamentosPorProjeto[o.projeto_id].push(o.fechamento_id ? { ...o, fechamento: fechamentos[o.fechamento_id] || null } : o);
     });
     const result = projetos.rows.map(p => ({
       ...p,
