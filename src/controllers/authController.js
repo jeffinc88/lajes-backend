@@ -9,19 +9,17 @@ const login = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    console.log('[DEBUG login] tentativa de login, email recebido:', JSON.stringify(email));
     const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
     const user = result.rows[0];
-    console.log('[DEBUG login] usuario encontrado no banco?', !!user);
 
     if (!user) return res.status(401).json({ error: 'Email ou senha incorretos.' });
 
     const valid = await bcrypt.compare(password, user.password);
-    console.log('[DEBUG login] senha confere?', valid);
     if (!valid) return res.status(401).json({ error: 'Email ou senha incorretos.' });
 
     const token = jwt.sign(
-      { id: user.id, name: user.name, email: user.email, role: user.role },
+      // mcp: entrou com senha temporária; o middleware bloqueia tudo até trocar.
+      { id: user.id, name: user.name, email: user.email, role: user.role, mcp: !!user.must_change_password },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -33,28 +31,6 @@ const login = async (req, res) => {
         mustChangePassword: user.must_change_password,
       },
     });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Erro interno.' });
-  }
-};
-
-const SENHA_PADRAO = '123456';
-
-const resetPassword = async (req, res) => {
-  const { email } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: 'Informe o email.' });
-  }
-
-  try {
-    const hash = await bcrypt.hash(SENHA_PADRAO, 10);
-    const result = await pool.query(
-      'UPDATE users SET password = $1, must_change_password = true WHERE email = $2 RETURNING id',
-      [hash, email]
-    );
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Email não encontrado.' });
-    res.json({ success: true, senhaPadrao: SENHA_PADRAO });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Erro interno.' });
@@ -80,4 +56,4 @@ const changePassword = async (req, res) => {
   }
 };
 
-module.exports = { login, changePassword, resetPassword };
+module.exports = { login, changePassword };

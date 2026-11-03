@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { Pool } = require('pg');
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -13,20 +14,24 @@ const getUsers = async (req, res) => {
   }
 };
 
-const SENHA_PADRAO = '123456';
+// Sem 0/O, 1/l/I para não confundir ao digitar.
+const ALFABETO = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const gerarSenhaTemporaria = (tamanho = 8) =>
+  Array.from({ length: tamanho }, () => ALFABETO[crypto.randomInt(ALFABETO.length)]).join('');
 
 const resetPassword = async (req, res) => {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acesso negado.' });
   const { id } = req.params;
 
   try {
-    const hash = await bcrypt.hash(SENHA_PADRAO, 10);
+    const senhaTemporaria = gerarSenhaTemporaria();
+    const hash = await bcrypt.hash(senhaTemporaria, 10);
     const result = await pool.query(
       'UPDATE users SET password = $1, must_change_password = true WHERE id = $2 RETURNING id',
       [hash, id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Usuário não encontrado.' });
-    res.json({ success: true, senhaPadrao: SENHA_PADRAO });
+    res.json({ success: true, senhaTemporaria });
   } catch (e) {
     res.status(500).json({ error: 'Erro interno.' });
   }
