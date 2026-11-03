@@ -1,6 +1,27 @@
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const { buscarFechamentos, sincronizarPagamentoFechamento } = require('./fechamentosController');
+const { buscarFechamentos, sincronizarPagamentoFechamento, ehAdmin, ehDoVendedor } = require('./fechamentosController');
+
+// Vendedor só mexe no que é dele; admin mexe em tudo.
+// Retorna o orçamento, ou envia 404/403 e retorna null.
+const carregarOrcamentoDoUsuario = async (req, res, id, executor = pool) => {
+  const result = await executor.query('SELECT * FROM orcamentos WHERE id=$1', [id]);
+  if (result.rows.length === 0) {
+    res.status(404).json({ error: 'Orçamento não encontrado.' });
+    return null;
+  }
+  if (!ehDoVendedor(req, result.rows[0])) {
+    res.status(403).json({ error: 'Acesso negado.' });
+    return null;
+  }
+  return result.rows[0];
+};
+
+const projetoEhDoUsuario = async (req, projetoId) => {
+  if (!projetoId || ehAdmin(req)) return true;
+  const result = await pool.query('SELECT vendedor FROM projetos WHERE id=$1', [projetoId]);
+  return result.rows.length > 0 && ehDoVendedor(req, result.rows[0]);
+};
 
 const anexarParcelas = async (orcamentos) => {
   if (orcamentos.length === 0) return orcamentos;
@@ -49,7 +70,12 @@ const getOrcamentos = async (req, res) => {
 };
 
 const createOrcamento = async (req, res) => {
-  const { cliente, itens, total, detalhamentos, vendedor, frete, nota, validade, art, acrescimo, outrasDespesas, desconto, observacao, observacaoCliente, tipo_laje, margem, projeto_id, forma_pagamento, data_entrega_prevista, parcelas } = req.body;
+  const { cliente, itens, total, detalhamentos, frete, nota, validade, art, acrescimo, outrasDespesas, desconto, observacao, observacaoCliente, tipo_laje, margem, projeto_id, forma_pagamento, data_entrega_prevista, parcelas } = req.body;
+  // Vendedor sempre cria em nome próprio; só o admin escolhe o vendedor.
+  const vendedor = ehAdmin(req) && req.body.vendedor ? req.body.vendedor : { id: req.user.id, name: req.user.name };
+  if (!(await projetoEhDoUsuario(req, projeto_id))) {
+    return res.status(403).json({ error: 'Acesso negado.' });
+  }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -102,6 +128,12 @@ const updateOrcamento = async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Orcamento nao encontrado.' });
     }
+    if (!ehDoVendedor(req, current.rows[0])) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+    // Só o admin troca o vendedor do orçamento.
+    if (!ehAdmin(req)) delete fields.vendedor;
     // Orçamento de um fechamento em conjunto: status e pagamento são do fechamento.
     const fechamentoId = current.rows[0].fechamento_id;
     if (fechamentoId && fields.status !== undefined && fields.status !== 'confirmado') {
@@ -178,6 +210,19 @@ const marcarParcelaPagamento = async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    if (!ehAdmin(req)) {
+      // Dono = vendedor do orçamento da parcela, ou de todos os orçamentos do fechamento.
+      const donos = await client.query(
+        `SELECT o.vendedor FROM orcamento_parcelas p
+           JOIN orcamentos o ON o.id = p.orcamento_id OR (p.fechamento_id IS NOT NULL AND o.fechamento_id = p.fechamento_id)
+          WHERE p.id = $1`,
+        [parcelaId]
+      );
+      if (donos.rows.length > 0 && donos.rows.some(o => !ehDoVendedor(req, o))) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Acesso negado.' });
+      }
+    }
     const parcela = await client.query(
       'UPDATE orcamento_parcelas SET pago_em=$1 WHERE id=$2 RETURNING orcamento_id, fechamento_id',
       [pago ? new Date().toISOString() : null, parcelaId]
@@ -205,6 +250,7 @@ const marcarParcelaPagamento = async (req, res) => {
 const marcarImpresso = async (req, res) => {
   const { id } = req.params;
   try {
+    if (!(await carregarOrcamentoDoUsuario(req, res, id))) return;
     const result = await pool.query(
       'UPDATE orcamentos SET impresso_em = now() WHERE id = $1 RETURNING *',
       [id]
@@ -220,6 +266,7 @@ const marcarImpresso = async (req, res) => {
 const marcarFollowUpFeito = async (req, res) => {
   const { id } = req.params;
   try {
+    if (!(await carregarOrcamentoDoUsuario(req, res, id))) return;
     const result = await pool.query(
       'UPDATE orcamentos SET followup_feito_em = now() WHERE id = $1 RETURNING *',
       [id]
@@ -235,8 +282,9 @@ const marcarFollowUpFeito = async (req, res) => {
 const deleteOrcamento = async (req, res) => {
   const { id } = req.params;
   try {
-    const membro = await pool.query('SELECT fechamento_id FROM orcamentos WHERE id=$1', [id]);
-    if (membro.rows[0]?.fechamento_id) {
+    const membro = await carregarOrcamentoDoUsuario(req, res, id);
+    if (!membro) return;
+    if (membro.fechamento_id) {
       return res.status(409).json({ error: 'Este orçamento faz parte de um fechamento em conjunto. Desfaça o fechamento antes.' });
     }
     await pool.query('DELETE FROM orcamentos WHERE id=$1', [id]);
@@ -270,6 +318,7 @@ const getItemTiposLaje = async (req, res) => {
 const updateItemTiposLaje = async (req, res) => {
   const { id } = req.params;
   const { tipo_laje_ids } = req.body;
+  if (!ehAdmin(req)) return res.status(403).json({ error: 'Acesso negado.' });
   try {
     await pool.query('DELETE FROM item_tipos_laje WHERE item_id=$1', [id]);
     if (tipo_laje_ids && tipo_laje_ids.length > 0) {

@@ -280,5 +280,5 @@ const deleteFechamento = async (req, res) => {
 
 module.exports = {
   createFechamento, reenviarBling, marcarPagamento, deleteFechamento,
-  buscarFechamentos, sincronizarPagamentoFechamento,
+  buscarFechamentos, sincronizarPagamentoFechamento, ehAdmin, ehDoVendedor,
 };

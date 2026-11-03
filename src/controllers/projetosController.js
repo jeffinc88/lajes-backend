@@ -1,6 +1,20 @@
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const { buscarFechamentos } = require('./fechamentosController');
+const { buscarFechamentos, ehAdmin, ehDoVendedor } = require('./fechamentosController');
+
+// Retorna true se o usuário pode mexer no projeto; senão envia 404/403.
+const podeMexerNoProjeto = async (req, res, id) => {
+  const result = await pool.query('SELECT vendedor FROM projetos WHERE id=$1', [id]);
+  if (result.rows.length === 0) {
+    res.status(404).json({ error: 'Projeto não encontrado.' });
+    return false;
+  }
+  if (!ehDoVendedor(req, result.rows[0])) {
+    res.status(403).json({ error: 'Acesso negado.' });
+    return false;
+  }
+  return true;
+};
 
 const getProjetos = async (req, res) => {
   try {
@@ -33,7 +47,9 @@ const getProjetos = async (req, res) => {
 };
 
 const createProjeto = async (req, res) => {
-  const { cliente, vendedor } = req.body;
+  const { cliente } = req.body;
+  // Vendedor sempre cria em nome próprio; só o admin escolhe o vendedor.
+  const vendedor = ehAdmin(req) && req.body.vendedor ? req.body.vendedor : { id: req.user.id, name: req.user.name };
   try {
     const result = await pool.query(
       'INSERT INTO projetos (cliente, vendedor) VALUES ($1, $2) RETURNING *',
@@ -50,6 +66,7 @@ const updateProjeto = async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
   try {
+    if (!(await podeMexerNoProjeto(req, res, id))) return;
     await pool.query('UPDATE projetos SET status=$1 WHERE id=$2', [status, id]);
     res.json({ success: true });
   } catch (e) {
@@ -61,6 +78,7 @@ const updateProjeto = async (req, res) => {
 const deleteProjeto = async (req, res) => {
   const { id } = req.params;
   try {
+    if (!(await podeMexerNoProjeto(req, res, id))) return;
     await pool.query('DELETE FROM orcamentos WHERE projeto_id=$1', [id]);
     await pool.query('DELETE FROM projetos WHERE id=$1', [id]);
     res.json({ success: true });
