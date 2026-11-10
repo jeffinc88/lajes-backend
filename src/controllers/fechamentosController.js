@@ -1,6 +1,7 @@
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const { criarPedidoVenda, excluirPedidoVenda } = require('../services/blingService');
+const crm = require('../services/crmService');
 
 // Fechamento em conjunto: vários orçamentos do mesmo projeto fechados de uma vez,
 // com uma forma de pagamento, um desconto sobre o total e um pedido no Bling.
@@ -181,6 +182,9 @@ const createFechamento = async (req, res) => {
     console.log('Falha Bling (fechamento):', e.message);
   }
 
+  // CRM: o fechamento entra como um pedido só (concilia sozinho se tudo bater)
+  await crm.aoConfirmarFechamento(fechamentoId);
+
   try {
     const fechamentos = await buscarFechamentos([fechamentoId]);
     res.status(201).json({ ...fechamentos[fechamentoId], bling_erro: blingErro });
@@ -198,6 +202,7 @@ const reenviarBling = async (req, res) => {
     if (!membro) return res.status(404).json({ error: 'Fechamento não encontrado.' });
     if (!ehDoVendedor(req, membro)) return res.status(403).json({ error: 'Acesso negado.' });
     const pedidoId = await enviarAoBling(id);
+    await crm.aoConfirmarFechamento(id);
     res.json({ success: true, pedido_id: pedidoId });
   } catch (e) {
     console.error('Erro ao enviar fechamento ao Bling:', e);
@@ -258,7 +263,7 @@ const deleteFechamento = async (req, res) => {
     }
     blingPedidoId = fechamento.bling_pedido_id;
     await client.query(
-      `UPDATE orcamentos SET fechamento_id=NULL, status='rascunho', pagamento_confirmado_em=NULL, bling_pedido_id=NULL
+      `UPDATE orcamentos SET fechamento_id=NULL, status='rascunho', pagamento_confirmado_em=NULL, bling_pedido_id=NULL, crm_status=NULL
        WHERE fechamento_id=$1`,
       [id]
     );
@@ -275,6 +280,7 @@ const deleteFechamento = async (req, res) => {
   if (blingPedidoId) {
     try { await excluirPedidoVenda(blingPedidoId); } catch (e) { console.log('Falha ao excluir pedido do Bling:', e.message); }
   }
+  await crm.aoDesfazerPedido(`F${id}`);
   res.json({ success: true });
 };
 

@@ -224,6 +224,23 @@ const buscarProdutoPorSku = async (token, sku) => {
   }
 };
 
+// Embute um valor (a gratificação lançada em "Outras Despesas") no preço dos itens,
+// proporcional ao valor de cada um, para a nota fiscal não mostrar esse valor separado.
+// O preço unitário fica com 2 casas; a sobra de centavos do arredondamento volta
+// em `sobra` (positiva = faltou cobrar; negativa = cobrou a mais) para fechar o total.
+const embutirNosItens = (itens, valor) => {
+  const cent = (v) => Math.round(v * 100);
+  const extra = cent(valor || 0);
+  const totalItem = (i) => i.valor * i.quantidade;
+  const soma = itens.reduce((t, i) => t + totalItem(i), 0);
+  if (!extra || soma <= 0) return { itens, sobra: extra / 100 };
+  const fator = 1 + (extra / 100) / soma;
+  const novos = itens.map(i => ({ ...i, valor: cent(i.valor * fator) / 100 }));
+  const alvo = itens.reduce((t, i) => t + cent(totalItem(i)), 0) + extra;
+  const somaNova = novos.reduce((t, i) => t + cent(totalItem(i)), 0);
+  return { itens: novos, sobra: (alvo - somaNova) / 100 };
+};
+
 const montarBodyPedido = async (orcamento, token) => {
   const cliente = typeof orcamento.cliente === 'string' ? JSON.parse(orcamento.cliente) : orcamento.cliente;
   const itens = typeof orcamento.itens === 'string' ? JSON.parse(orcamento.itens) : orcamento.itens || [];
@@ -266,7 +283,15 @@ const montarBodyPedido = async (orcamento, token) => {
   const artVal = parseFloat(orcamento.art || 0);
   const notaVal = parseFloat(nota?.valor || 0);
   const outrasDespesasBase = parseFloat(orcamento.outras_despesas || 0);
-  const outrasDespesasTotal = outrasDespesasBase + artVal + notaVal;
+  // A gratificação vai embutida no preço dos itens (não aparece separada na nota).
+  // Em "outras despesas" do Bling ficam só ART, nota e a sobra de centavos.
+  const embutido = embutirNosItens(itensBling, outrasDespesasBase);
+  let outrasDespesasTotal = Math.round((artVal + notaVal + embutido.sobra) * 100) / 100;
+  let descontoTotal = parseFloat(orcamento.desconto || 0);
+  if (outrasDespesasTotal < 0) {
+    descontoTotal = Math.round((descontoTotal - outrasDespesasTotal) * 100) / 100;
+    outrasDespesasTotal = 0;
+  }
   const margem = parseFloat(orcamento.margem || 1.3);
   const freteComMargem = parseFloat((parseFloat(orcamento.frete || 0) * margem).toFixed(2));
 
@@ -274,13 +299,13 @@ const montarBodyPedido = async (orcamento, token) => {
     data: hoje,
     dataSaida: hoje,
     contato: { id: clienteId },
-    itens: itensBling,
+    itens: embutido.itens,
     transporte: { frete: freteComMargem },
-    desconto: { valor: parseFloat(orcamento.desconto || 0), tipo: 'V' },
+    desconto: { valor: descontoTotal, tipo: 'V' },
     outrasDespesas: outrasDespesasTotal,
     observacoes: observacao,
     observacoesInternas: [
-      `Outras despesas: R$ ${outrasDespesasBase.toFixed(2)} | ART: R$ ${artVal.toFixed(2)} | Nota Fiscal ${nota?.tipo || ''}: R$ ${notaVal.toFixed(2)}`,
+      `Outras despesas (embutidas nos itens): R$ ${outrasDespesasBase.toFixed(2)} | ART: R$ ${artVal.toFixed(2)} | Nota Fiscal ${nota?.tipo || ''}: R$ ${notaVal.toFixed(2)}`,
       ...(avisosCliente || []),
     ].join(' | '),
   };
@@ -341,4 +366,5 @@ const excluirPedidoVenda = async (pedidoId) => {
   return true;
 };
 
-module.exports = { criarPedidoVenda, atualizarPedidoVenda, excluirPedidoVenda, salvarToken, getToken };
+module.exports = {
+  embutirNosItens, criarPedidoVenda, atualizarPedidoVenda, excluirPedidoVenda, salvarToken, getToken };

@@ -1,6 +1,19 @@
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const { buscarFechamentos, sincronizarPagamentoFechamento, ehAdmin, ehDoVendedor } = require('./fechamentosController');
+const crm = require('../services/crmService');
+
+// Campos de ligação com o CRM que o app envia junto com o orçamento
+const camposCRM = (b, atual = {}) => {
+  const pega = (k) => (b[k] !== undefined ? (b[k] || null) : (atual[k] ?? null));
+  return {
+    crm_profissional_id: pega('crm_profissional_id'),
+    crm_obra_id: pega('crm_obra_id'),
+    profissional_nome: pega('profissional_nome'),
+    profissional_informado: pega('profissional_informado'),
+    profissional_telefone: pega('profissional_telefone'),
+  };
+};
 
 // Vendedor só mexe no que é dele; admin mexe em tudo.
 // Retorna o orçamento, ou envia 404/403 e retorna null.
@@ -76,13 +89,18 @@ const createOrcamento = async (req, res) => {
   if (!(await projetoEhDoUsuario(req, projeto_id))) {
     return res.status(403).json({ error: 'Acesso negado.' });
   }
+  const crmCampos = camposCRM(req.body);
+  if (!(await crm.profissionalPermitido(req.user, crmCampos.crm_profissional_id))) {
+    return res.status(403).json({ error: 'Esse profissional não está na sua carteira do CRM.' });
+  }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const result = await client.query(
       `INSERT INTO orcamentos
-        (cliente, itens, total, detalhamentos, vendedor, frete, nota, validade, art, acrescimo, outras_despesas, desconto, observacao, observacao_cliente, tipo_laje, margem, projeto_id, forma_pagamento, data_entrega_prevista)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        (cliente, itens, total, detalhamentos, vendedor, frete, nota, validade, art, acrescimo, outras_despesas, desconto, observacao, observacao_cliente, tipo_laje, margem, projeto_id, forma_pagamento, data_entrega_prevista,
+         crm_profissional_id, crm_obra_id, profissional_nome, profissional_informado, profissional_telefone)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
        RETURNING *`,
       [
         JSON.stringify(cliente), JSON.stringify(itens), total,
@@ -91,11 +109,15 @@ const createOrcamento = async (req, res) => {
         art || 0, acrescimo || 0, outrasDespesas || 0, desconto || 0,
         observacao || '', observacaoCliente || '', tipo_laje || null, margem || 1.3, projeto_id || null,
         forma_pagamento || 'avista', data_entrega_prevista || null,
+        crmCampos.crm_profissional_id, crmCampos.crm_obra_id, crmCampos.profissional_nome,
+        crmCampos.profissional_informado, crmCampos.profissional_telefone,
       ]
     );
-    const orcamento = result.rows[0];
+    let orcamento = result.rows[0];
     await inserirParcelas(client, orcamento.id, parcelas);
     await client.query('COMMIT');
+    await crm.aoSalvarOrcamento(orcamento.id);
+    orcamento = (await pool.query('SELECT * FROM orcamentos WHERE id=$1', [orcamento.id])).rows[0] || orcamento;
     const [comParcelas] = await anexarParcelas([orcamento]);
     res.status(201).json(comParcelas);
   } catch (e) {
@@ -146,6 +168,18 @@ const updateOrcamento = async (req, res) => {
       delete fields.parcelas;
     }
     const updated = { ...current.rows[0], ...fields };
+    const crmCampos = camposCRM(fields, current.rows[0]);
+    if (fields.crm_profissional_id !== undefined
+        && String(fields.crm_profissional_id || '') !== String(current.rows[0].crm_profissional_id || '')
+        && !(await crm.profissionalPermitido(req.user, crmCampos.crm_profissional_id))) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Esse profissional não está na sua carteira do CRM.' });
+    }
+    // Trocou o profissional: a obra antiga do CRM deixa de valer para este orçamento
+    if (String(crmCampos.crm_profissional_id || '') !== String(current.rows[0].crm_profissional_id || '')
+        && fields.crm_obra_id === undefined) {
+      crmCampos.crm_obra_id = null;
+    }
     const outrasDespesas = parseFloat(fields.outrasDespesas ?? fields.outras_despesas ?? updated.outras_despesas ?? 0);
     const motivoPerda = fields.motivo_perda !== undefined ? fields.motivo_perda : updated.motivo_perda || null;
     const margem = parseFloat(fields.margem ?? updated.margem ?? 1.3);
@@ -168,7 +202,8 @@ const updateOrcamento = async (req, res) => {
         cliente=$1, itens=$2, total=$3, detalhamentos=$4, status=$5, vendedor=$6,
         frete=$7, nota=$8, validade=$9, art=$10, acrescimo=$11, outras_despesas=$12,
         desconto=$13, observacao=$14, motivo_perda=$15, margem=$16, tipo_laje=$17, bling_pedido_id=$18, observacao_cliente=$19, pagamento_confirmado_em=$20,
-        forma_pagamento=$21, data_entrega_prevista=$22, confirmado_em=$23
+        forma_pagamento=$21, data_entrega_prevista=$22, confirmado_em=$23,
+        crm_profissional_id=$25, crm_obra_id=$26, profissional_nome=$27, profissional_informado=$28, profissional_telefone=$29
        WHERE id=$24`,
       [
         JSON.stringify(updated.cliente), JSON.stringify(updated.itens), total,
@@ -177,6 +212,8 @@ const updateOrcamento = async (req, res) => {
         art, updated.acrescimo || 0, outrasDespesas, desconto,
         updated.observacao || '', motivoPerda, margem, tipoLaje, blingPedidoId, observacaoCliente, pagamentoConfirmadoEm,
         formaPagamento, dataEntregaPrevista, confirmadoEm, id,
+        crmCampos.crm_profissional_id, crmCampos.crm_obra_id, crmCampos.profissional_nome,
+        crmCampos.profissional_informado, crmCampos.profissional_telefone,
       ]
     );
 
@@ -194,6 +231,13 @@ const updateOrcamento = async (req, res) => {
     }
 
     await client.query('COMMIT');
+
+    // CRM: obra Orçada; pedido confirmado entra na conciliação; confirmação desfeita sai.
+    await crm.aoSalvarOrcamento(id);
+    const estavaConfirmado = current.rows[0].status === 'confirmado';
+    if (!fechamentoId && updated.status === 'confirmado') await crm.aoConfirmarOrcamento(id);
+    else if (!fechamentoId && estavaConfirmado && updated.status !== 'confirmado') await crm.aoDesfazerPedido(id);
+
     res.json({ success: true });
   } catch (e) {
     await client.query('ROLLBACK');
@@ -288,6 +332,7 @@ const deleteOrcamento = async (req, res) => {
       return res.status(409).json({ error: 'Este orçamento faz parte de um fechamento em conjunto. Desfaça o fechamento antes.' });
     }
     await pool.query('DELETE FROM orcamentos WHERE id=$1', [id]);
+    if (membro.status === 'confirmado') await crm.aoDesfazerPedido(id);
     res.json({ success: true });
   } catch (e) {
     console.error(e);
