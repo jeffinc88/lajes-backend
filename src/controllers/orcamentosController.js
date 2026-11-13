@@ -217,6 +217,17 @@ const updateOrcamento = async (req, res) => {
       ]
     );
 
+    // A lista de orçamentos mostra cliente e responsável do projeto: manter em dia.
+    const projetoId = current.rows[0].projeto_id;
+    if (projetoId) {
+      if (fields.cliente !== undefined) {
+        await client.query('UPDATE projetos SET cliente=$1 WHERE id=$2', [JSON.stringify(updated.cliente), projetoId]);
+      }
+      if (fields.vendedor !== undefined) {
+        await client.query('UPDATE projetos SET vendedor=$1 WHERE id=$2', [JSON.stringify(updated.vendedor), projetoId]);
+      }
+    }
+
     if (fields.parcelas !== undefined) {
       const existentes = await client.query('SELECT numero, pago_em FROM orcamento_parcelas WHERE orcamento_id=$1', [id]);
       const pagoPorNumero = {};
