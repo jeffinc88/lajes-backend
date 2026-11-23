@@ -6,8 +6,11 @@ const { Pool } = require('pg');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 // mcp: entrou com senha temporária; o middleware bloqueia tudo até trocar.
-const assinarToken = (user) => jwt.sign(
-  { id: user.id, name: user.name, email: user.email, role: user.role, mcp: !!user.must_change_password },
+// at: quando entrou com a senha (segundos); a renovação em /auth/me mantém, para ter limite.
+const RENOVAR_ATE_S = 30 * 86400;
+const agoraS = () => Math.floor(Date.now() / 1000);
+const assinarToken = (user, at = agoraS()) => jwt.sign(
+  { id: user.id, name: user.name, email: user.email, role: user.role, mcp: !!user.must_change_password, at },
   process.env.JWT_SECRET,
   { expiresIn: '7d' }
 );
@@ -60,14 +63,19 @@ const changePassword = async (req, res) => {
 
 // GET /auth/me: usuário atual do banco + token novo de 7 dias (o programa de laje confere o acesso
 // e renova o login sem pedir a senha de novo).
+// Renova só até 30 dias depois do último login com senha (token copiado não vale para sempre).
 const criarMe = (pool) => async (req, res) => {
+  const at = req.user.at ?? req.user.iat;
+  if (!at || agoraS() - at > RENOVAR_ATE_S) {
+    return res.status(401).json({ error: 'Login vencido. Entre de novo com a senha.' });
+  }
   try {
     const r = await pool.query(
       'SELECT id, name, email, role, must_change_password FROM users WHERE id = $1', [req.user.id]);
     const user = r.rows[0];
     if (!user) return res.status(401).json({ error: 'Usuário não existe mais.' });
     res.status(200).json({
-      token: assinarToken(user),
+      token: assinarToken(user, at),
       user: {
         id: user.id, name: user.name, email: user.email, role: user.role,
         mustChangePassword: user.must_change_password,

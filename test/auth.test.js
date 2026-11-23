@@ -52,9 +52,34 @@ test('senha temporaria so libera troca de senha', async () => {
 test('me devolve usuario do banco e token novo', async () => {
   const banco = { id: 7, name: 'Ana Souza', email: 'ana@x.com', role: 'vendedor', must_change_password: false };
   const r = res();
-  await criarMe(poolCom([banco]))({ user: { id: 7 } }, r);
+  await criarMe(poolCom([banco]))({ user: { id: 7, iat: Math.floor(Date.now() / 1000) } }, r);
   assert.strictEqual(r.statusCode, 200);
   assert.strictEqual(r.body.user.email, 'ana@x.com');
   assert.strictEqual(r.body.user.name, 'Ana Souza');
   assert.strictEqual(jwt.verify(r.body.token, 'teste').id, 7);
+});
+
+test('me nao renova login feito com senha ha mais de 30 dias', async () => {
+  const banco = { id: 7, name: 'Ana', email: 'ana@x.com', role: 'vendedor', must_change_password: false };
+  const agora = Math.floor(Date.now() / 1000);
+  const r = res();
+  await criarMe(poolCom([banco]))({ user: { id: 7, at: agora - 31 * 86400 } }, r);
+  assert.strictEqual(r.statusCode, 401);
+  const ok = res();
+  await criarMe(poolCom([banco]))({ user: { id: 7, at: agora - 29 * 86400 } }, ok);
+  assert.strictEqual(ok.statusCode, 200);
+  assert.strictEqual(jwt.verify(ok.body.token, 'teste').at, agora - 29 * 86400);   // a renovação mantém a data do login
+});
+
+test('token antigo sem data de login usa a data do token', async () => {
+  const banco = { id: 7, name: 'Ana', email: 'ana@x.com', role: 'vendedor', must_change_password: false };
+  const r = res();
+  await criarMe(poolCom([banco]))({ user: { id: 7, iat: Math.floor(Date.now() / 1000) - 31 * 86400 } }, r);
+  assert.strictEqual(r.statusCode, 401);
+});
+
+test('login grava a data do login no token', () => {
+  const { assinarToken } = require('../src/controllers/authController');
+  const at = jwt.verify(assinarToken({ id: 7, name: 'Ana', email: 'a', role: 'vendedor', must_change_password: false }), 'teste').at;
+  assert.ok(Math.abs(at - Math.floor(Date.now() / 1000)) < 5);
 });
