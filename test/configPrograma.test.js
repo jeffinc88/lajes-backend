@@ -53,3 +53,18 @@ test('put de admin grava e devolve', async () => {
   assert.deepStrictEqual(pool.chamadas[0].params, [JSON.stringify(DADOS), 9]);
   assert.deepStrictEqual(r.body, { dados: DADOS, atualizado_em: 'y' });
 });
+
+for (const [nome, corpo] of [
+  ['de_para com id vazio', { de_para: { x: null }, perdas: {}, limites: {} }],
+  ['de_para com id texto', { de_para: { x: 'abc' }, perdas: {}, limites: {} }],
+  ['perdas nao numericas', { de_para: {}, perdas: { eps: 'abc' }, limites: {} }],
+  ['limite vazio', { de_para: {}, perdas: {}, limites: { vao_alerta_cm: null } }],
+]) {
+  test(`put com ${nome} recebe 400`, async () => {
+    const pool = poolCom([]);
+    const r = res();
+    await criarPut(pool)({ user: { id: 1, role: 'admin' }, body: corpo }, r);
+    assert.strictEqual(r.statusCode, 400);
+    assert.strictEqual(pool.chamadas.length, 0);
+  });
+}

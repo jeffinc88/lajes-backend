@@ -3,6 +3,8 @@
 const { Pool } = require('pg');
 
 const objeto = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+// todo valor é número (id do produto, % de perda, limite em cm): dado ruim aqui travaria o programa em todo PC
+const numerico = (o) => Object.values(o).every((v) => typeof v === 'number' && Number.isFinite(v));
 
 const criarGet = (pool) => async (req, res) => {
   try {
@@ -20,6 +22,9 @@ const criarPut = (pool) => async (req, res) => {
   const { de_para, perdas, limites } = req.body || {};
   if (!objeto(de_para) || !objeto(perdas) || !objeto(limites)) {
     return res.status(400).json({ error: 'Configuração incompleta (de_para, perdas e limites).' });
+  }
+  if (!numerico(de_para) || !numerico(perdas) || !numerico(limites)) {
+    return res.status(400).json({ error: 'Configuração com valor que não é número.' });
   }
   const dados = { de_para, perdas, limites };
   try {
