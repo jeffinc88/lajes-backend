@@ -15,6 +15,7 @@ const crmRoutes = require('./routes/crm');
 const pagamentoRoutes = require('./routes/pagamento');
 const recebimentoRoutes = require('./routes/recebimento');
 const empresaRoutes = require('./routes/empresa');
+const configProgramaRoutes = require('./routes/configPrograma');
 const iniciarNotificacoesCron = require('./jobs/notificationsCron');
 
 const app = express();
@@ -33,6 +34,7 @@ app.use('/crm', crmRoutes);
 app.use('/pagamento', pagamentoRoutes);
 app.use('/recebimento', recebimentoRoutes);
 app.use('/empresa', empresaRoutes);
+app.use('/config-programa', configProgramaRoutes);
 
 app.get('/', (req, res) => res.json({ status: 'ok' }));
 
