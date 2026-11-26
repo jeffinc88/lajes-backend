@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>/*TITULO*/</title>
+<style>
+  :root { --azul: #1f4e79; --azul2: #2f6ea8; --tinta: #1d2733; --cinza: #6b7785; --fundo: #dfe8ef;
+          --verde: #1e8a4c; --laranja: #c76a12; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fundo);
+               font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: var(--tinta); }
+  #cena { position: fixed; inset: 0; touch-action: none; }
+  .barra-topo { position: fixed; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 12px;
+                padding: 10px 14px; background: rgba(255,255,255,.92); box-shadow: 0 1px 6px rgba(0,0,0,.12); z-index: 5; }
+  .barra-topo img { height: 40px; width: auto; border-radius: 4px; }
+  .titulo { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+  .titulo span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .titulo b { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .titulo span { font-size: 12.5px; color: var(--cinza); }
+  .selo { margin-left: auto; padding: 5px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600;
+          white-space: nowrap; flex-shrink: 0; background: #e6f4ec; color: var(--verde); border: 1px solid #b6dfc6; }
+  .selo.reduzida { background: #fff3e3; color: var(--laranja); border-color: #f1d2a8; }
+  .vistas { position: fixed; top: 74px; right: 10px; display: flex; flex-direction: column; gap: 6px; z-index: 4; }
+  .vistas button, .camadas { background: rgba(255,255,255,.94); border: 1px solid #d5dde6; border-radius: 8px;
+          box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .vistas button { font-size: 12px; padding: 7px 9px; cursor: pointer; color: var(--tinta); min-width: 64px; }
+  .vistas button.ativo { background: var(--azul); color: #fff; border-color: var(--azul); }
+  .camadas { position: fixed; top: 74px; left: 10px; padding: 8px 10px; z-index: 4; font-size: 13px; }
+  .camadas summary { cursor: pointer; font-weight: 600; }
+  .camadas label { display: flex; align-items: center; gap: 7px; padding: 4px 0; cursor: pointer; }
+  .camadas i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .barra-baixo { position: fixed; bottom: 0; left: 0; right: 0; display: flex; gap: 8px; padding: 10px;
+                 justify-content: center; z-index: 5; background: linear-gradient(transparent, rgba(238,242,246,.95) 40%); }
+  .barra-baixo button, .barra-baixo select { font-size: 16px; padding: 12px 18px; border-radius: 12px; border: 0;
+          font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+  .principal { background: var(--azul); color: #fff; }
+  .secundario { background: #fff; color: var(--azul); }
+  .barra-baixo select { background: #fff; color: var(--tinta); max-width: 46vw; }
+  #etapa { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); background: rgba(29,39,51,.92);
+           color: #fff; padding: 8px 10px; border-radius: 14px; font-size: 15px; z-index: 6; display: none;
+           align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; width: max-content; max-width: 96vw; }
+  #etapa-txt { padding: 0 6px; text-align: center; }
+  #etapa button { font-size: 15px; padding: 9px 13px; border-radius: 10px; border: 0; cursor: pointer;
+                  background: #fff; color: var(--azul); font-weight: 600; }
+  #etapa button:disabled { opacity: .4; cursor: default; }
+  #etapa #auto { background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.5); }
+  #etapa #auto.ativo { background: var(--azul2); border-color: var(--azul2); }
+  #info { position: fixed; left: 50%; top: 76px; transform: translateX(-50%); background: #fff; color: var(--tinta);
+          padding: 10px 14px; border-radius: 10px; font-size: 14px; box-shadow: 0 3px 14px rgba(0,0,0,.18);
+          z-index: 6; display: none; max-width: 88vw; text-align: center; }
+  .painel { position: fixed; inset: auto 0 0 0; max-height: 70vh; overflow: auto; background: #fff; z-index: 8;
+            border-radius: 16px 16px 0 0; box-shadow: 0 -4px 20px rgba(0,0,0,.2); padding: 16px 18px 22px; display: none; }
+  .painel h2 { margin: 0 0 4px; font-size: 18px; }
+  .painel .fechar { position: absolute; right: 12px; top: 10px; border: 0; background: #eef2f6; border-radius: 8px;
+                    font-size: 15px; padding: 6px 11px; cursor: pointer; }
+  .painel h3 { margin: 14px 0 4px; font-size: 14px; color: var(--azul); }
+  .painel table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .painel td { padding: 5px 2px; border-bottom: 1px solid #eef2f6; }
+  .painel td.q { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .painel .seg { font-size: 13px; color: var(--cinza); margin: 2px 0; }
+  #pronta { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 9;
+            background: rgba(238,242,246,.55); }
+  #pronta .cartao { background: #fff; border-radius: 18px; padding: 24px 28px; text-align: center;
+                    box-shadow: 0 8px 30px rgba(0,0,0,.25); max-width: 86vw; }
+  #pronta img { max-height: 70px; max-width: 220px; }
+  #pronta h1 { margin: 10px 0 4px; font-size: 24px; color: var(--azul); }
+  #pronta p { margin: 4px 0; color: var(--cinza); }
+  #pronta button { margin-top: 14px; }
+  @media (max-width: 640px) {
+    .titulo b { font-size: 15px; } .barra-topo img { height: 32px; }
+    .selo { font-size: 11px; padding: 4px 8px; }
+    .vistas { top: 64px; } .camadas { top: 64px; }
+    .barra-baixo button, .barra-baixo select { font-size: 15px; padding: 11px 13px; }
+  }
+</style>
+</head>
+<body>
+<div id="cena"></div>
+<div class="barra-topo">
+  <img id="logo" alt="" hidden>
+  <div class="titulo"><b id="titulo"></b><span id="subtitulo"></span></div>
+  <div class="selo" id="selo"></div>
+</div>
+<details class="camadas" id="camadas"><summary>Camadas</summary><div id="lista-camadas"></div></details>
+<div class="vistas" id="vistas"></div>
+<div id="info"></div>
+<div id="etapa"><button id="ant">◀ Voltar</button><span id="etapa-txt"></span>
+  <button id="prox">Avançar ▶</button><button id="auto">⏵ Automático</button></div>
+<div class="barra-baixo">
+  <button class="principal" id="montar">▶ Montar</button>
+  <button class="secundario" id="btn-pecas">Peças</button>
+  <select id="opcao" aria-label="Opção"></select>
+</div>
+<div class="painel" id="painel-pecas"><button class="fechar" id="fechar-pecas">✕</button><div id="conteudo-pecas"></div></div>
+<div id="pronta"><div class="cartao"><img id="logo2" alt="" hidden><h1>Laje pronta!</h1><p id="pronta-cliente"></p>
+  <p id="pronta-desc"></p><button class="principal" id="fechar-pronta">Ver a laje</button></div></div>
+<script>/*THREE*/</script>
+<script>/*CONTROLS*/</script>
+<script id="modelo" type="application/json">/*MODELO*/</script>
+<script>window.LOGO = /*LOGO*/;</script>
+<script>/*VIEWER*/</script>
+</body>
+</html>

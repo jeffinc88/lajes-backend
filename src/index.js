@@ -16,11 +16,15 @@ const pagamentoRoutes = require('./routes/pagamento');
 const recebimentoRoutes = require('./routes/recebimento');
 const empresaRoutes = require('./routes/empresa');
 const configProgramaRoutes = require('./routes/configPrograma');
+const modelo3dRoutes = require('./routes/modelo3d');
 const iniciarNotificacoesCron = require('./jobs/notificationsCron');
 
 const app = express();
 
 app.use(cors());
+// link 3D: rota com corpo maior (até 5 MB) antes do express.json() global (100 kB)
+app.use('/modelo3d', modelo3dRoutes.gravar);
+app.use('/3d', modelo3dRoutes.publico);
 app.use(express.json());
 
 app.use('/auth', authRoutes);
